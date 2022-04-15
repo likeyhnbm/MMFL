@@ -1,9 +1,6 @@
 #!/bin/bash 
 
 # main
-source /home/ma584394/python3Env/fl/bin/activate
-echo CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES
-
 python main.py --method fedavg --client_number 16 --comm_round 2 --lr 0.01 --epochs 20
 python main.py --method gradaug --client_number 16 --comm_round 2 --lr 0.01 --epochs 20 --width 0.8 --mult 1.75 --num_subnets 2
 python main.py --method moon --client_number 16 --comm_round 2 --lr 0.01 --epochs 20 --mu 1.0
