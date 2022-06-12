@@ -234,7 +234,7 @@ if __name__ == "__main__":
         # Start server and get initial outputs
         pool = cm.MyPool(args.thread_number, init_process, (client_info, Client))
         # init server
-        server_dict['save_path'] = '/home/ma584394/code/Federated_Learning/logs/{}_{}_e{}_c{}'.format(
+        server_dict['save_path'] = './logs/{}_{}_e{}_c{}'.format(
                         time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()), args.method, args.epochs, args.client_number)
         if not os.path.exists(server_dict['save_path']):
             os.makedirs(server_dict['save_path'])

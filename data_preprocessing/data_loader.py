@@ -178,6 +178,35 @@ def _data_transforms_imagenet(datadir):
 
     return train_transform, valid_transform
 
+def _data_transforms_crop_diseases(datadir):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+
+    crop_scale = 0.08
+    jitter_param = 0.4
+    lighting_param = 0.1
+    image_size = 384
+    image_resize = 400
+
+    train_transform = transforms.Compose([
+        transforms.RandomResizedCrop(image_size, scale=(crop_scale, 1.0)),
+        transforms.ColorJitter(
+            brightness=jitter_param, contrast=jitter_param,
+            saturation=jitter_param),
+        # Lighting(lighting_param),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean, std=std),
+    ])
+    valid_transform = transforms.Compose([
+        transforms.Resize(image_resize),
+        transforms.CenterCrop(image_size),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean, std=std),
+    ])
+
+    return train_transform, valid_transform
+
 def load_data(datadir):
     if 'cifar' in datadir:
         train_transform, test_transform = _data_transforms_cifar(datadir)
@@ -185,6 +214,9 @@ def load_data(datadir):
     elif 'cinic' in datadir:
         train_transform, test_transform = _data_transforms_cinic10(datadir)
         dl_obj = ImageFolderTruncated
+    elif 'CropDiseases' in datadir:
+        train_transform, test_transform = _data_transforms_crop_diseases(datadir)
+        dl_obj = ImageFolder_custom
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
         dl_obj = ImageFolder_custom
