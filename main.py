@@ -1,3 +1,4 @@
+from secrets import choice
 import torch
 from torch._C import default_generator
 import torchvision
@@ -12,6 +13,9 @@ from models.resnet_feddepth import resnet56 as resnet56_feddepth
 from models.resnet_feddepth import resnet18 as resnet18_feddepth
 from models.resnet_ours import resnet56 as resnet56_ours
 from models.resnet_ours import resnet18 as resnet18_ours
+import timm
+from models.vpt import build_promptmodel
+
 from torch.multiprocessing import Pool, Process, set_start_method, Queue
 import logging
 import os
@@ -34,11 +38,15 @@ def add_args(parser):
     return a parser added with args required by fit
     """
     # Training settings
-    parser.add_argument('--method', type=str, default='fedavg', metavar='N',
-                        help='federated learning method')
+    parser.add_argument('--method', type=str, default='scratch', choices=['scratch','pretrain','prompt'], metavar='M',
+                        help='baseline method')
+    parser.add_argument('--prompt_num', type=int, default=10, metavar='N',
+                        help='prompt number for vpt')   
+    parser.add_argument('--vpt_type', type=str, default='Shallow', choices= ['Shallow', 'Deep'], metavar='N',
+                        help='type of vpt')
 
-    # parser.add_argument('--model', type=str, default='resnet56', metavar='N',
-    #                     help='neural network used in training')
+    parser.add_argument('--model', type=str, default='vit', choices=['resnet18','resnet56','vit'], metavar='M',
+                        help='neural network used in training')
 
     parser.add_argument('--data_dir', type=str, default='data/cifar100',
                         help='data directory: data/cifar100, data/cifar10, or a personal dataset')
@@ -65,6 +73,9 @@ def add_args(parser):
 
     parser.add_argument('--comm_round', type=int, default=100,
                         help='how many round of communications we shoud use')
+
+    parser.add_argument('--pretrained_backbone', action='store_true', default=False,
+                        help='test pretrained model')
 
     parser.add_argument('--pretrained', action='store_true', default=False,
                         help='test pretrained model')
@@ -141,6 +152,13 @@ def allocate_clients_to_threads(args):
             break
     return mapping_dict
 
+MODEL_DICT = {
+    'resnet56': resnet56,
+    'resnet18': resnet18,
+    'vit': timm.create_model,
+    # 'prompt': 
+}
+
 if __name__ == "__main__":
     try:
      set_start_method('spawn')
@@ -157,63 +175,81 @@ if __name__ == "__main__":
 
     mapping_dict = allocate_clients_to_threads(args)
     #init method and model type
-    if args.method=='fedavg':
+    # NOTE Always use fedavg right now
+    if args.method=='scratch':
         Server = fedavg.Server
         Client = fedavg.Client
-        Model = resnet56 if 'cifar' in args.data_dir else resnet18
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
+        Model = timm.create_model('vit_base_patch16_384',num_classes= class_num, pretrained= False)
+        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model': Model, 'num_classes': class_num}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)]
-    elif args.method=='gradaug':
-        Server = gradaug.Server
-        Client = gradaug.Client
-        Model = resnet56_gradaug if 'cifar' in args.data_dir else resnet18_gradaug
-        width_range = [args.width, 1.0]
-        resolution_dict = {'cifar': [[32, 28, 24, 20], [32, 28, 24], [32, 24, 16], [32, 28, 24, 20, 16], [32]], 'imagenet': [[224, 192, 160, 128], [224, 192, 160]]}
-        resolutions = resolution_dict['cifar'][args.resolution_type] if 'cifar' in args.data_dir else resolution_dict['imagenet'][args.resolution_type]
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
+                            'client_map':mapping_dict[i], 'model': Model, 'num_classes': class_num} for i in range(args.thread_number)]
+
+    elif args.method=='pretrain':
+        Server = fedavg.Server
+        Client = fedavg.Client
+        Model = timm.create_model('vit_base_patch16_384',num_classes= class_num, pretrained= True)
+        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model': Model, 'num_classes': class_num}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num, 
-                            'width_range': width_range, 'resolutions': resolutions} for i in range(args.thread_number)]
-    elif args.method=='fedprox':
-        Server = fedprox.Server
-        Client = fedprox.Client
-        Model = resnet56 if 'cifar' in args.data_dir else resnet18
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
+                            'client_map':mapping_dict[i], 'model': Model, 'num_classes': class_num} for i in range(args.thread_number)]
+
+    elif args.method=='prompt':
+        Server = fedavg.Server
+        Client = fedavg.Client
+        basic_model = timm.create_model('vit_base_patch16_384',num_classes= class_num, pretrained= True)
+        Model = build_promptmodel(basic_model, num_classes= class_num, VPT_type=args.vpt_type)
+        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model': Model, 'num_classes': class_num}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)]
-    elif args.method=='moon':
-        Server = moon.Server
-        Client = moon.Client
-        Model = resnet56 if 'cifar' in args.data_dir else resnet18
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
-        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)]
-    elif args.method=='feddepth':
-        Server = feddepth.Server
-        Client = feddepth.Client
-        Model = resnet56_feddepth if 'cifar' in args.data_dir else resnet18_feddepth
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
-        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)]
-    elif args.method=='mixup':
-        Server = mixup.Server
-        Client = mixup.Client
-        Model = resnet56 if 'cifar' in args.data_dir else resnet18
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
-        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)]
-    elif args.method=='ours':
-        Server = ours.Server
-        Client = ours.Client
-        Model = resnet56_ours if 'cifar' in args.data_dir else resnet18_ours
-        width_range = [args.width, 1.0]
-        resolution_dict = {'cifar': [[32], [32, 28], [32, 28, 24], [32, 28, 24, 20]], 'imagenet': [[224]]}
-        resolutions = resolution_dict['cifar'][args.resolution_type] if 'cifar' in args.data_dir else resolution_dict['imagenet'][args.resolution_type]
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
-        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num, 
-                            'width_range': width_range, 'resolutions': resolutions} for i in range(args.thread_number)]
+                            'client_map':mapping_dict[i], 'model': Model, 'num_classes': class_num} for i in range(args.thread_number)]
+    # elif args.method=='gradaug':
+    #     Server = gradaug.Server
+    #     Client = gradaug.Client
+    #     Model = resnet56_gradaug if 'cifar' in args.data_dir else resnet18_gradaug
+    #     width_range = [args.width, 1.0]
+    #     resolution_dict = {'cifar': [[32, 28, 24, 20], [32, 28, 24], [32, 24, 16], [32, 28, 24, 20, 16], [32]], 'imagenet': [[224, 192, 160, 128], [224, 192, 160]]}
+    #     resolutions = resolution_dict['cifar'][args.resolution_type] if 'cifar' in args.data_dir else resolution_dict['imagenet'][args.resolution_type]
+    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
+    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num, 
+    #                         'width_range': width_range, 'resolutions': resolutions} for i in range(args.thread_number)]
+    # elif args.method=='fedprox':
+    #     Server = fedprox.Server
+    #     Client = fedprox.Client
+    #     Model = resnet56 if 'cifar' in args.data_dir else resnet18
+    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
+    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)]
+    # elif args.method=='moon':
+    #     Server = moon.Server
+    #     Client = moon.Client
+    #     Model = resnet56 if 'cifar' in args.data_dir else resnet18
+    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
+    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)]
+    # elif args.method=='feddepth':
+    #     Server = feddepth.Server
+    #     Client = feddepth.Client
+    #     Model = resnet56_feddepth if 'cifar' in args.data_dir else resnet18_feddepth
+    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
+    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)]
+    # elif args.method=='mixup':
+    #     Server = mixup.Server
+    #     Client = mixup.Client
+    #     Model = resnet56 if 'cifar' in args.data_dir else resnet18
+    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
+    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)]
+    # elif args.method=='ours':
+    #     Server = ours.Server
+    #     Client = ours.Client
+    #     Model = resnet56_ours if 'cifar' in args.data_dir else resnet18_ours
+    #     width_range = [args.width, 1.0]
+    #     resolution_dict = {'cifar': [[32], [32, 28], [32, 28, 24], [32, 28, 24, 20]], 'imagenet': [[224]]}
+    #     resolutions = resolution_dict['cifar'][args.resolution_type] if 'cifar' in args.data_dir else resolution_dict['imagenet'][args.resolution_type]
+    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
+    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num, 
+    #                         'width_range': width_range, 'resolutions': resolutions} for i in range(args.thread_number)]
     else:
         raise ValueError('Invalid --method chosen! Please choose from availible methods.')
 

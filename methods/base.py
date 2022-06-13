@@ -9,7 +9,10 @@ class Base_Client():
         self.train_data = client_dict['train_data']
         self.test_data = client_dict['test_data']
         self.device = 'cuda:{}'.format(client_dict['device'])
-        self.model_type = client_dict['model_type']
+        if 'model_type' in client_dict:
+            self.model_type = client_dict['model_type']
+        elif 'model' in client_dict:
+            self.model = client_dict['model']
         self.num_classes = client_dict['num_classes']
         self.args = args
         self.round = 0
@@ -96,7 +99,10 @@ class Base_Server():
         self.train_data = server_dict['train_data']
         self.test_data = server_dict['test_data']
         self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
-        self.model_type = server_dict['model_type']
+        if 'model_type' in server_dict:
+            self.model_type = server_dict['model_type']
+        elif 'model' in server_dict:
+            self.model = server_dict['model']
         self.num_classes = server_dict['num_classes']
         self.acc = 0.0
         self.round = 0

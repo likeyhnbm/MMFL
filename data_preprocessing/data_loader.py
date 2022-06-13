@@ -283,6 +283,11 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None):
         dl_obj = ImageFolderTruncated
         workers=0
         persist=False
+    elif 'CropDiseases' in datadir:
+        train_transform, test_transform = _data_transforms_crop_diseases(datadir)
+        dl_obj = ImageFolder_custom
+        workers=0
+        persist=False
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
         dl_obj = ImageFolder_custom

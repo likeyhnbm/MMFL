@@ -1,0 +1,11 @@
+# cache
+__pycache__
+*.pyc
+
+# data
+data
+# log
+logs
+
+# test files
+test.ipynb
