@@ -1,8 +1,10 @@
+from distutils.log import set_verbosity
 from secrets import choice
 import torch
 from torch._C import default_generator
 import torchvision
 import numpy as np
+import pdb
 import random
 import data_preprocessing.data_loader as dl
 import argparse
@@ -16,11 +18,13 @@ from models.resnet_ours import resnet18 as resnet18_ours
 import timm
 from models.vpt import build_promptmodel
 
-from torch.multiprocessing import Pool, Process, set_start_method, Queue
+from torch.multiprocessing import Pool, Process, set_start_method, Queue, Lock
+
 import logging
 import os
 from collections import defaultdict
 import time
+
 
 # methods
 import methods.fedavg as fedavg
@@ -30,7 +34,13 @@ import methods.moon as moon
 import methods.feddepth as feddepth
 import methods.mixup as mixup
 import methods.ours as ours
+import methods.scratch as scratch
+import methods.pretrain as pretrain
+import methods.prompt as prompt
 import data_preprocessing.custom_multiprocess as cm
+
+from torch.utils.tensorboard import SummaryWriter
+
 
 def add_args(parser):
     """
@@ -102,6 +112,8 @@ def add_args(parser):
                     help='stochastic depth probability')
     parser.add_argument('--beta', default=0.0, type=float,
                     help='hyperparameter beta for mixup')
+    parser.add_argument('--debug', action='store_true', default=False,
+                        help='reduce the sampler number for debugging')                
     args = parser.parse_args()
 
     return args
@@ -124,10 +136,13 @@ def init_process(q, Client):
     global client
     ci = q.get()
     client = Client(ci[0], ci[1])
+    # client.server = 
 
 def run_clients(received_info):
     try:
+        # received_info, save_path = info
         # client, received_info = client_args
+        # glo.set_value('writer', SummaryWriter(log_dir=save_path))
         return client.run(received_info)
     except KeyboardInterrupt:
         logging.info('exiting')
@@ -168,7 +183,11 @@ if __name__ == "__main__":
     # get arguments
     parser = argparse.ArgumentParser()
     args = add_args(parser)
- 
+
+    save_path = './logs/{}_{}_e{}_c{}'.format(
+                        time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()), args.method, args.epochs, args.client_number)
+    args.save_path = save_path
+
     # get data
     train_data_num, test_data_num, train_data_global, test_data_global, data_local_num_dict, train_data_local_dict, test_data_local_dict,\
          class_num = dl.load_partition_data(args.data_dir, args.partition_method, args.partition_alpha, args.client_number, args.batch_size)
@@ -177,29 +196,34 @@ if __name__ == "__main__":
     #init method and model type
     # NOTE Always use fedavg right now
     if args.method=='scratch':
-        Server = fedavg.Server
-        Client = fedavg.Client
-        Model = timm.create_model('vit_base_patch16_384',num_classes= class_num, pretrained= False)
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model': Model, 'num_classes': class_num}
+        Server = scratch.Server
+        Client = scratch.Client
+        Model = timm.create_model
+        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':'vit_base_patch16_384'}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model': Model, 'num_classes': class_num} for i in range(args.thread_number)]
+                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':'vit_base_patch16_384'} for i in range(args.thread_number)]
+
 
     elif args.method=='pretrain':
-        Server = fedavg.Server
-        Client = fedavg.Client
-        Model = timm.create_model('vit_base_patch16_384',num_classes= class_num, pretrained= True)
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model': Model, 'num_classes': class_num}
+        Server = pretrain.Server
+        Client = pretrain.Client
+        Model = timm.create_model
+        # ('vit_base_patch16_384',num_classes= class_num, pretrained= True)
+        # server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model': Model, 'num_classes': class_num, 'writer':writer}
+        # client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+        #                     'client_map':mapping_dict[i], 'model': Model, 'num_classes': class_num, 'writer':writer} for i in range(args.thread_number)]
+        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':'vit_base_patch16_384'}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model': Model, 'num_classes': class_num} for i in range(args.thread_number)]
+                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':'vit_base_patch16_384'} for i in range(args.thread_number)]
 
     elif args.method=='prompt':
-        Server = fedavg.Server
-        Client = fedavg.Client
+        Server = prompt.Server
+        Client = prompt.Client
         basic_model = timm.create_model('vit_base_patch16_384',num_classes= class_num, pretrained= True)
-        Model = build_promptmodel(basic_model, num_classes= class_num, VPT_type=args.vpt_type)
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model': Model, 'num_classes': class_num}
+        Model = build_promptmodel
+        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model': Model, 'num_classes': class_num} for i in range(args.thread_number)]
+                            'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]
     # elif args.method=='gradaug':
     #     Server = gradaug.Server
     #     Client = gradaug.Client
@@ -260,6 +284,13 @@ if __name__ == "__main__":
         server.model.load_state_dict(torch.load('logs/2022-03-21 20:56:10.626330_fedavg_e20_c16/server.pt'))
         acc = server.test()
     else:
+        # init server
+        server_dict['save_path'] = save_path
+        if not os.path.exists(server_dict['save_path']):
+            os.makedirs(server_dict['save_path'])
+        server = Server(server_dict, args)
+        server_outputs = server.start()
+        # Start Federated Training
         #init nodes
         client_info = Queue()
         # clients = {}
@@ -269,15 +300,9 @@ if __name__ == "__main__":
 
         # Start server and get initial outputs
         pool = cm.MyPool(args.thread_number, init_process, (client_info, Client))
-        # init server
-        server_dict['save_path'] = './logs/{}_{}_e{}_c{}'.format(
-                        time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()), args.method, args.epochs, args.client_number)
-        if not os.path.exists(server_dict['save_path']):
-            os.makedirs(server_dict['save_path'])
-        server = Server(server_dict, args)
-        server_outputs = server.start()
-        # Start Federated Training
-        time.sleep(150*(args.client_number/16)) #  Allow time for threads to start up
+
+    
+        time.sleep(500*(args.client_number/16)) #  Allow time for threads to start up
         for r in range(args.comm_round):
             logging.info('************** Round: {} ***************'.format(r))
             round_start = time.time()

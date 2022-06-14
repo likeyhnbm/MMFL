@@ -2,6 +2,9 @@ import torch
 import wandb
 import logging
 from torch.multiprocessing import current_process
+from torch.utils.tensorboard import SummaryWriter
+# import writer
+
 
 
 class Base_Client():
@@ -13,6 +16,7 @@ class Base_Client():
             self.model_type = client_dict['model_type']
         elif 'model' in client_dict:
             self.model = client_dict['model']
+        self.writer = SummaryWriter(args.save_path)
         self.num_classes = client_dict['num_classes']
         self.args = args
         self.round = 0
@@ -20,6 +24,10 @@ class Base_Client():
         self.train_dataloader = None
         self.test_dataloader = None
         self.client_index = None
+        
+
+    def set_server(self,server):
+        self.server = server
     
     def load_client_state_dict(self, server_state_dict):
         if self.args.localbn:
@@ -51,11 +59,15 @@ class Base_Client():
         # train the local model
         self.model.to(self.device)
         self.model.train()
+        # _writer = glo.get_value("writer")
         epoch_loss = []
         for epoch in range(self.args.epochs):
             batch_loss = []
+            cnt = 0 
             for batch_idx, (images, labels) in enumerate(self.train_dataloader):
                 # logging.info(images.shape)
+                if self.args.debug and cnt>1:
+                    break
                 images, labels = images.to(self.device), labels.to(self.device)
                 self.optimizer.zero_grad()
                 log_probs = self.model(images)
@@ -63,8 +75,10 @@ class Base_Client():
                 loss.backward()
                 self.optimizer.step()
                 batch_loss.append(loss.item())
+                cnt+=1
             if len(batch_loss) > 0:
                 epoch_loss.append(sum(batch_loss) / len(batch_loss))
+                self.writer.add_scalar('Loss/client_{}/train'.format(self.client_index), sum(batch_loss) / len(batch_loss), epoch)
                 logging.info('(client {}. Local Training Epoch: {} \tLoss: {:.6f}  Thread {}  Map {}'.format(self.client_index,
                                                                             epoch, sum(epoch_loss) / len(epoch_loss), current_process()._identity[0], self.client_map[self.round]))
         weights = self.model.cpu().state_dict()
@@ -78,7 +92,10 @@ class Base_Client():
         test_loss = 0.0
         test_sample_number = 0.0
         with torch.no_grad():
+            cnt = 0
             for batch_idx, (x, target) in enumerate(self.train_dataloader):
+                if self.args.debug and cnt>1:
+                    break
                 x = x.to(self.device)
                 target = target.to(self.device)
 
@@ -90,6 +107,7 @@ class Base_Client():
                 test_correct += correct.item()
                 # test_loss += loss.item() * target.size(0)
                 test_sample_number += target.size(0)
+                cnt+=1
             acc = (test_correct / test_sample_number)*100
             logging.info("************* Client {} Acc = {:.2f} **************".format(self.client_index, acc))
         return acc
@@ -121,7 +139,7 @@ class Base_Server():
     
     def start(self):
         with open('{}/out.log'.format(self.save_path), 'a+') as out_file:
-            out_file.write('{}'.format(self.args))
+            out_file.write('{}\n'.format(self.args))
         return [self.model.cpu().state_dict() for x in range(self.args.thread_number)]
 
     def log_info(self, client_info, acc):
@@ -153,7 +171,10 @@ class Base_Server():
         test_loss = 0.0
         test_sample_number = 0.0
         with torch.no_grad():
+            cnt = 0
             for batch_idx, (x, target) in enumerate(self.test_data):
+                if self.args.debug and cnt>1:
+                    break
                 x = x.to(self.device)
                 target = target.to(self.device)
 
@@ -165,6 +186,7 @@ class Base_Server():
                 test_correct += correct.item()
                 # test_loss += loss.item() * target.size(0)
                 test_sample_number += target.size(0)
+                cnt+=1
             acc = (test_correct / test_sample_number)*100
             logging.info("************* Server Acc = {:.2f} **************".format(acc))
         return acc
