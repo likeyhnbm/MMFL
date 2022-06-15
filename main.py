@@ -302,7 +302,7 @@ if __name__ == "__main__":
         pool = cm.MyPool(args.thread_number, init_process, (client_info, Client))
 
     
-        time.sleep(500*(args.client_number/16)) #  Allow time for threads to start up
+        time.sleep(150*(args.client_number/args.thread_number)) #  Allow time for threads to start up
         for r in range(args.comm_round):
             logging.info('************** Round: {} ***************'.format(r))
             round_start = time.time()
