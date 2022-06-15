@@ -221,7 +221,7 @@ if __name__ == "__main__":
         Client = prompt.Client
         basic_model = timm.create_model('vit_base_patch16_384',num_classes= class_num, pretrained= True)
         Model = build_promptmodel
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
+        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
                             'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]
     # elif args.method=='gradaug':
