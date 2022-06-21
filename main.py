@@ -310,6 +310,9 @@ if __name__ == "__main__":
             client_outputs = [c for sublist in client_outputs for c in sublist]
             server_outputs = server.run(client_outputs)
             round_end = time.time()
-            logging.info('Round {} Time: {}s'.format(r, round_end-round_start))
+            out_str = 'Round {} Time: {}s'.format(r, round_end-round_start)
+            logging.info(out_str)
+            with open('{}/out.log'.format(args.save_path), 'a+') as out_file:
+                out_file.write(out_str)
         pool.close()
         pool.join()
