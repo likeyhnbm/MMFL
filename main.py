@@ -113,7 +113,9 @@ def add_args(parser):
     parser.add_argument('--beta', default=0.0, type=float,
                     help='hyperparameter beta for mixup')
     parser.add_argument('--debug', action='store_true', default=False,
-                        help='reduce the sampler number for debugging')                
+                        help='reduce the sampler number for debugging')    
+    parser.add_argument('--optimizer', default='adamw',choices= ['sgd','adamw'],type=str,
+                    help='selection of optimizer')            
     args = parser.parse_args()
 
     return args
@@ -184,8 +186,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     args = add_args(parser)
 
-    save_path = './logs/{}_{}_e{}_c{}'.format(
-                        time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()), args.method, args.epochs, args.client_number)
+    save_path = './logs/{}_lr{:.0e}_e{}_c{}_{}'.format(
+                        args.method, args.lr, args.epochs, args.client_number, time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
     args.save_path = save_path
 
     # get data

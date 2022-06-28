@@ -25,7 +25,6 @@ class Base_Client():
         self.test_dataloader = None
         self.client_index = None
         
-
     def set_server(self,server):
         self.server = server
     
@@ -66,7 +65,7 @@ class Base_Client():
             cnt = 0 
             for batch_idx, (images, labels) in enumerate(self.train_dataloader):
                 # logging.info(images.shape)
-                if self.args.debug and cnt>1:
+                if self.args.debug and cnt>5:
                     break
                 images, labels = images.to(self.device), labels.to(self.device)
                 self.optimizer.zero_grad()
@@ -76,6 +75,7 @@ class Base_Client():
                 self.optimizer.step()
                 batch_loss.append(loss.item())
                 cnt+=1
+                # logging.info('(client {} cnt {}'.format(self.client_index,cnt))
             if len(batch_loss) > 0:
                 epoch_loss.append(sum(batch_loss) / len(batch_loss))
                 self.writer.add_scalar('Loss/client_{}/train'.format(self.client_index), sum(batch_loss) / len(batch_loss), epoch)

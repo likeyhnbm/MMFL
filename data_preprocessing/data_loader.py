@@ -214,7 +214,7 @@ def load_data(datadir):
     elif 'cinic' in datadir:
         train_transform, test_transform = _data_transforms_cinic10(datadir)
         dl_obj = ImageFolderTruncated
-    elif 'CropDiseases' in datadir:
+    elif 'CropDisease' in datadir:
         train_transform, test_transform = _data_transforms_crop_diseases(datadir)
         dl_obj = ImageFolder_custom
     else:
@@ -283,10 +283,10 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None):
         dl_obj = ImageFolderTruncated
         workers=0
         persist=False
-    elif 'CropDiseases' in datadir:
+    elif 'CropDisease' in datadir:
         train_transform, test_transform = _data_transforms_crop_diseases(datadir)
         dl_obj = ImageFolder_custom
-        workers=0
+        workers=16
         persist=False
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)

@@ -18,13 +18,13 @@ class NoDaemonProcess(multiprocessing.Process):
 
 # We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
 # because the latter is only a wrapper function, not a proper class.
-class MyPool(multiprocessing.pool.Pool):
-    Process = NoDaemonProcess
+# class MyPool(multiprocessing.pool.Pool):
+#     Process = NoDaemonProcess
 
 # NOTE: For CUDA 11, use this definition in MyPool instead
-# class MyPool(multiprocessing.pool.Pool):
-#     def Process(self, *args, **kwds):
-#         proc = super(MyPool, self).Process(*args, **kwds)
-#         proc.__class__ = NoDaemonProcess
+class MyPool(multiprocessing.pool.Pool):
+    def Process(self, *args, **kwds):
+        proc = super(MyPool, self).Process(*args, **kwds)
+        proc.__class__ = NoDaemonProcess
 
-#         return proc
+        return proc
