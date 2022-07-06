@@ -91,7 +91,7 @@ class Lighting(object):
     def __repr__(self):
         return self.__class__.__name__ + '()'
 
-def _data_transforms_cifar(datadir):
+def _data_transforms_cifar(datadir,img_size=32):
     if "cifar100" in datadir:
         CIFAR_MEAN = [0.5071, 0.4865, 0.4409]
         CIFAR_STD = [0.2673, 0.2564, 0.2762]
@@ -101,7 +101,8 @@ def _data_transforms_cifar(datadir):
 
     train_transform = transforms.Compose([
         transforms.ToPILImage(),
-        transforms.RandomCrop(32, padding=4),
+        transforms.Resize(img_size),
+        transforms.RandomCrop(img_size, padding=4),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
@@ -110,6 +111,8 @@ def _data_transforms_cifar(datadir):
     # train_transform.transforms.append(Cutout(16))
 
     valid_transform = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Resize(img_size),
         transforms.ToTensor(),
         transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
     ])
@@ -178,7 +181,7 @@ def _data_transforms_imagenet(datadir):
 
     return train_transform, valid_transform
 
-def _data_transforms_crop_diseases(datadir):
+def _data_transforms_prompt(datadir):
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
 
@@ -215,7 +218,7 @@ def load_data(datadir):
         train_transform, test_transform = _data_transforms_cinic10(datadir)
         dl_obj = ImageFolderTruncated
     elif 'CropDisease' in datadir:
-        train_transform, test_transform = _data_transforms_crop_diseases(datadir)
+        train_transform, test_transform = _data_transforms_prompt(datadir)
         dl_obj = ImageFolder_custom
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
@@ -272,9 +275,9 @@ def partition_data(datadir, partition, n_nets, alpha):
 
 
 # for centralized training
-def get_dataloader(datadir, train_bs, test_bs, dataidxs=None):
+def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224):
     if 'cifar' in datadir:
-        train_transform, test_transform = _data_transforms_cifar(datadir)
+        train_transform, test_transform = _data_transforms_cifar(datadir,img_size)
         dl_obj = CIFAR_truncated
         workers=0
         persist=False
@@ -284,7 +287,7 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None):
         workers=0
         persist=False
     elif 'CropDisease' in datadir:
-        train_transform, test_transform = _data_transforms_crop_diseases(datadir)
+        train_transform, test_transform = _data_transforms_prompt(datadir)
         dl_obj = ImageFolder_custom
         workers=16
         persist=False
@@ -302,13 +305,13 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None):
 
     return train_dl, test_dl
 
-def load_partition_data(data_dir, partition_method, partition_alpha, client_number, batch_size):
+def load_partition_data(data_dir, partition_method, partition_alpha, client_number, batch_size, img_size=224):
     class_num, net_dataidx_map, traindata_cls_counts = partition_data(data_dir, partition_method, client_number, partition_alpha)
 
     logging.info("traindata_cls_counts = " + str(traindata_cls_counts))
     train_data_num = sum([len(net_dataidx_map[r]) for r in range(client_number)])
 
-    train_data_global, test_data_global = get_dataloader(data_dir, batch_size, batch_size)
+    train_data_global, test_data_global = get_dataloader(data_dir, batch_size, batch_size,img_size=img_size)
     logging.info("train_dl_global number = " + str(len(train_data_global)))
     logging.info("test_dl_global number = " + str(len(train_data_global)))
     test_data_num = len(test_data_global)
@@ -325,7 +328,7 @@ def load_partition_data(data_dir, partition_method, partition_alpha, client_numb
         logging.info("client_idx = %d, local_sample_number = %d" % (client_idx, local_data_num))
 
         # training batch size = 64; algorithms batch size = 32
-        train_data_local, test_data_local = get_dataloader(data_dir, batch_size, batch_size, dataidxs)
+        train_data_local, test_data_local = get_dataloader(data_dir, batch_size, batch_size, dataidxs,img_size)
         logging.info("client_idx = %d, batch_num_train_local = %d, batch_num_test_local = %d" % (
             client_idx, len(train_data_local), len(test_data_local)))
         train_data_local_dict[client_idx] = train_data_local

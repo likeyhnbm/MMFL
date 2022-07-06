@@ -51,7 +51,9 @@ def add_args(parser):
     parser.add_argument('--method', type=str, default='scratch', choices=['scratch','pretrain','prompt'], metavar='M',
                         help='baseline method')
     parser.add_argument('--prompt_num', type=int, default=10, metavar='N',
-                        help='prompt number for vpt')   
+                        help='prompt number for vpt') 
+    parser.add_argument('--vit_type', type=str, default='vit_small_patch16_384', choices=['vit_small_patch32_224','vit_small_patch16_224'] , metavar='N',
+                        help='type of vpt')  
     parser.add_argument('--vpt_type', type=str, default='Shallow', choices= ['Shallow', 'Deep'], metavar='N',
                         help='type of vpt')
 
@@ -169,12 +171,23 @@ def allocate_clients_to_threads(args):
             break
     return mapping_dict
 
-MODEL_DICT = {
-    'resnet56': resnet56,
-    'resnet18': resnet18,
-    'vit': timm.create_model,
-    # 'prompt': 
-}
+# MODEL_DICT = {
+#     'resnet56': resnet56,
+#     'resnet18': resnet18,
+#     'vit': timm.create_model,
+#     # 'prompt': 
+# }
+
+# DATA_DICT = {
+#     'dataset/cifar-100-python/' : 'Cifar100',
+#     "" : 'CropDisease'
+# }
+
+def datapath2str(path):
+    if "cifar-100" in path:
+        return 'Cifar100'
+    elif "CropDisease" in path:
+        return 'CropDisease'
 
 if __name__ == "__main__":
     try:
@@ -186,13 +199,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     args = add_args(parser)
 
-    save_path = './logs/{}_lr{:.0e}_e{}_c{}_{}'.format(
-                        args.method, args.lr, args.epochs, args.client_number, time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
+    data_name = datapath2str(args.data_dir)
+
+    save_path = './logs/{}_lr{:.0e}_e{}_c{}_{}_{}'.format(
+                        args.method, args.lr, args.epochs, args.client_number, data_name, time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
     args.save_path = save_path
 
     # get data
+    img_size = 224 if '224' in args.vit_type else 384
     train_data_num, test_data_num, train_data_global, test_data_global, data_local_num_dict, train_data_local_dict, test_data_local_dict,\
-         class_num = dl.load_partition_data(args.data_dir, args.partition_method, args.partition_alpha, args.client_number, args.batch_size)
+         class_num = dl.load_partition_data(args.data_dir, args.partition_method, args.partition_alpha, args.client_number, args.batch_size,img_size)
 
     mapping_dict = allocate_clients_to_threads(args)
     #init method and model type
@@ -201,27 +217,27 @@ if __name__ == "__main__":
         Server = scratch.Server
         Client = scratch.Client
         Model = timm.create_model
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':'vit_base_patch16_384'}
+        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':args.vit_type}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':'vit_base_patch16_384'} for i in range(args.thread_number)]
+                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':args.vit_type} for i in range(args.thread_number)]
 
 
     elif args.method=='pretrain':
         Server = pretrain.Server
         Client = pretrain.Client
         Model = timm.create_model
-        # ('vit_base_patch16_384',num_classes= class_num, pretrained= True)
+        # (args.vit_type,num_classes= class_num, pretrained= True)
         # server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model': Model, 'num_classes': class_num, 'writer':writer}
         # client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
         #                     'client_map':mapping_dict[i], 'model': Model, 'num_classes': class_num, 'writer':writer} for i in range(args.thread_number)]
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':'vit_base_patch16_384'}
+        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':args.vit_type}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':'vit_base_patch16_384'} for i in range(args.thread_number)]
+                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':args.vit_type} for i in range(args.thread_number)]
 
     elif args.method=='prompt':
         Server = prompt.Server
         Client = prompt.Client
-        basic_model = timm.create_model('vit_base_patch16_384',num_classes= class_num, pretrained= True)
+        basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
         Model = build_promptmodel
         server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
@@ -304,7 +320,7 @@ if __name__ == "__main__":
         pool = cm.MyPool(args.thread_number, init_process, (client_info, Client))
 
     
-        time.sleep(15*(args.client_number/args.thread_number)) #  Allow time for threads to start up
+        time.sleep(15 * (args.client_number/16)) #  Allow time for threads to start up
         for r in range(args.comm_round):
             logging.info('************** Round: {} ***************'.format(r))
             round_start = time.time()
