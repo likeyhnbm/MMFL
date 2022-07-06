@@ -279,7 +279,7 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224):
     if 'cifar' in datadir:
         train_transform, test_transform = _data_transforms_cifar(datadir,img_size)
         dl_obj = CIFAR_truncated
-        workers=0
+        workers=32
         persist=False
     elif 'cinic' in datadir:
         train_transform, test_transform = _data_transforms_cinic10(datadir)
