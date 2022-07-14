@@ -118,6 +118,8 @@ def add_args(parser):
                         help='reduce the sampler number for debugging')    
     parser.add_argument('--optimizer', default='adamw',choices= ['sgd','adamw'],type=str,
                     help='selection of optimizer')            
+    parser.add_argument('--stat', action='store_true', default=False,
+                    help='show the state of model')    
     args = parser.parse_args()
 
     return args
@@ -188,6 +190,11 @@ def datapath2str(path):
         return 'Cifar100'
     elif "CropDisease" in path:
         return 'CropDisease'
+
+def get_parameter_number(model):
+    total_num = sum(p.numel() for p in model.parameters())
+    trainable_num = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    return {'Total': total_num, 'Trainable': trainable_num}
 
 if __name__ == "__main__":
     try:
@@ -295,6 +302,8 @@ if __name__ == "__main__":
     else:
         raise ValueError('Invalid --method chosen! Please choose from availible methods.')
 
+
+
     if args.pretrained:
         print('Pretrained')
         server_dict['save_path'] = "best.pt"
@@ -308,6 +317,11 @@ if __name__ == "__main__":
             os.makedirs(server_dict['save_path'])
         server = Server(server_dict, args)
         server_outputs = server.start()
+        if args.stat:
+            # from torchsummary import summary
+            # summary(server.model,(3,224,224))
+            print(get_parameter_number(server.model))
+            exit('Stat finished')
         # Start Federated Training
         #init nodes
         client_info = Queue()
@@ -328,7 +342,7 @@ if __name__ == "__main__":
             client_outputs = [c for sublist in client_outputs for c in sublist]
             server_outputs = server.run(client_outputs)
             round_end = time.time()
-            out_str = 'Round {} Time: {}s'.format(r, round_end-round_start)
+            out_str = ' Round {} Time: {}s \n'.format(r, round_end-round_start)
             logging.info(out_str)
             with open('{}/out.log'.format(args.save_path), 'a+') as out_file:
                 out_file.write(out_str)
