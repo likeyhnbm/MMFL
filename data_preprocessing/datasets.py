@@ -53,7 +53,7 @@ class CIFAR_truncated(data.Dataset):
 
     def __build_truncated_dataset__(self):
         print("download = " + str(self.download))
-        if "cifar100" in self.root:
+        if "cifar100" or "cifar-100" in self.root:
             cifar_dataobj = CIFAR100(self.root, self.train, self.transform, self.target_transform, self.download)
         else:
             cifar_dataobj = CIFAR10(self.root, self.train, self.transform, self.target_transform, self.download)

@@ -16,7 +16,7 @@ class Base_Client():
             self.model_type = client_dict['model_type']
         elif 'model' in client_dict:
             self.model = client_dict['model']
-        self.writer = SummaryWriter(args.save_path)
+        # self.writer = SummaryWriter(args.save_path)
         self.num_classes = client_dict['num_classes']
         self.args = args
         self.round = 0
@@ -37,19 +37,22 @@ class Base_Client():
     
     def run(self, received_info):
         client_results = []
-        for client_idx in self.client_map[self.round]:
-            self.load_client_state_dict(received_info)
-            self.train_dataloader = self.train_data[client_idx]
-            self.test_dataloader = self.test_data[client_idx]
-            if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None and self.train_dataloader._iterator._shutdown:
-                self.train_dataloader._iterator = self.train_dataloader._get_iterator()
-            self.client_index = client_idx
-            num_samples = len(self.train_dataloader)*self.args.batch_size
-            weights = self.train()
-            acc = self.test()
-            client_results.append({'weights':weights, 'num_samples':num_samples,'acc':acc, 'client_index':self.client_index})
-            if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None:
-                self.train_dataloader._iterator._shutdown_workers()
+        try:
+            for client_idx in self.client_map[self.round]:
+                self.load_client_state_dict(received_info)
+                self.train_dataloader = self.train_data[client_idx]
+                self.test_dataloader = self.test_data[client_idx]
+                if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None and self.train_dataloader._iterator._shutdown:
+                    self.train_dataloader._iterator = self.train_dataloader._get_iterator()
+                self.client_index = client_idx
+                num_samples = len(self.train_dataloader)*self.args.batch_size
+                weights = self.train()
+                acc = self.test()
+                client_results.append({'weights':weights, 'num_samples':num_samples,'acc':acc, 'client_index':self.client_index})
+                if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None:
+                    self.train_dataloader._iterator._shutdown_workers()
+        except:
+            print(self.client_index, self.round)
 
         self.round += 1
         return client_results
@@ -78,7 +81,7 @@ class Base_Client():
                 # logging.info('(client {} cnt {}'.format(self.client_index,cnt))
             if len(batch_loss) > 0:
                 epoch_loss.append(sum(batch_loss) / len(batch_loss))
-                self.writer.add_scalar('Loss/client_{}/train'.format(self.client_index), sum(batch_loss) / len(batch_loss), epoch)
+                # self.writer.add_scalar('Loss/client_{}/train'.format(self.client_index), sum(batch_loss) / len(batch_loss), epoch)
                 logging.info('(client {}. Local Training Epoch: {} \tLoss: {:.6f}  Thread {}  Map {}'.format(self.client_index,
                                                                             epoch, sum(epoch_loss) / len(epoch_loss), current_process()._identity[0], self.client_map[self.round]))
         weights = self.model.cpu().state_dict()
@@ -144,7 +147,7 @@ class Base_Server():
 
     def log_info(self, client_info, acc):
         client_acc = sum([c['acc'] for c in client_info])/len(client_info)
-        # wandb.log({"Test/AccTop1": acc, "Client_Train/AccTop1": client_acc, "round": self.round})
+        wandb.log({"Test/AccTop1": acc, "Client_Train/AccTop1": client_acc, "round": self.round})
         out_str = 'Test/AccTop1: {}, Client_Train/AccTop1: {}, round: {}\n'.format(acc, client_acc, self.round)
         with open('{}/out.log'.format(self.save_path), 'a+') as out_file:
             out_file.write(out_str)

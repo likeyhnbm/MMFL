@@ -18,6 +18,8 @@ from models.resnet_ours import resnet18 as resnet18_ours
 import timm
 from models.vpt import build_promptmodel
 
+import wandb
+
 from torch.multiprocessing import Pool, Process, set_start_method, Queue, Lock
 
 import logging
@@ -39,8 +41,6 @@ import methods.pretrain as pretrain
 import methods.prompt as prompt
 import data_preprocessing.custom_multiprocess as cm
 
-from torch.utils.tensorboard import SummaryWriter
-
 
 def add_args(parser):
     """
@@ -52,7 +52,7 @@ def add_args(parser):
                         help='baseline method')
     parser.add_argument('--prompt_num', type=int, default=10, metavar='N',
                         help='prompt number for vpt') 
-    parser.add_argument('--vit_type', type=str, default='vit_small_patch16_384', choices=['vit_small_patch32_224','vit_small_patch16_224'] , metavar='N',
+    parser.add_argument('--vit_type', type=str, default='vit_small_patch16_384', choices=['vit_small_patch32_224','vit_small_patch16_224', 'vit_base_patch16_224'] , metavar='N',
                         help='type of vpt')  
     parser.add_argument('--vpt_type', type=str, default='Shallow', choices= ['Shallow', 'Deep'], metavar='N',
                         help='type of vpt')
@@ -186,7 +186,7 @@ def allocate_clients_to_threads(args):
 # }
 
 def datapath2str(path):
-    if "cifar-100" in path:
+    if "cifar-100" in path or "cifar100" in path:
         return 'Cifar100'
     elif "CropDisease" in path:
         return 'CropDisease'
@@ -202,9 +202,13 @@ if __name__ == "__main__":
     except RuntimeError:
         pass
     set_random_seed()
+    
     # get arguments
     parser = argparse.ArgumentParser()
     args = add_args(parser)
+
+    wandb.init(config=args)
+
 
     data_name = datapath2str(args.data_dir)
 
@@ -218,6 +222,7 @@ if __name__ == "__main__":
          class_num = dl.load_partition_data(args.data_dir, args.partition_method, args.partition_alpha, args.client_number, args.batch_size,img_size)
 
     mapping_dict = allocate_clients_to_threads(args)
+    # pdb.set_trace()
     #init method and model type
     # NOTE Always use fedavg right now
     if args.method=='scratch':
@@ -249,56 +254,6 @@ if __name__ == "__main__":
         server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
                             'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]
-    # elif args.method=='gradaug':
-    #     Server = gradaug.Server
-    #     Client = gradaug.Client
-    #     Model = resnet56_gradaug if 'cifar' in args.data_dir else resnet18_gradaug
-    #     width_range = [args.width, 1.0]
-    #     resolution_dict = {'cifar': [[32, 28, 24, 20], [32, 28, 24], [32, 24, 16], [32, 28, 24, 20, 16], [32]], 'imagenet': [[224, 192, 160, 128], [224, 192, 160]]}
-    #     resolutions = resolution_dict['cifar'][args.resolution_type] if 'cifar' in args.data_dir else resolution_dict['imagenet'][args.resolution_type]
-    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
-    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num, 
-    #                         'width_range': width_range, 'resolutions': resolutions} for i in range(args.thread_number)]
-    # elif args.method=='fedprox':
-    #     Server = fedprox.Server
-    #     Client = fedprox.Client
-    #     Model = resnet56 if 'cifar' in args.data_dir else resnet18
-    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
-    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)]
-    # elif args.method=='moon':
-    #     Server = moon.Server
-    #     Client = moon.Client
-    #     Model = resnet56 if 'cifar' in args.data_dir else resnet18
-    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
-    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)]
-    # elif args.method=='feddepth':
-    #     Server = feddepth.Server
-    #     Client = feddepth.Client
-    #     Model = resnet56_feddepth if 'cifar' in args.data_dir else resnet18_feddepth
-    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
-    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)]
-    # elif args.method=='mixup':
-    #     Server = mixup.Server
-    #     Client = mixup.Client
-    #     Model = resnet56 if 'cifar' in args.data_dir else resnet18
-    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
-    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)]
-    # elif args.method=='ours':
-    #     Server = ours.Server
-    #     Client = ours.Client
-    #     Model = resnet56_ours if 'cifar' in args.data_dir else resnet18_ours
-    #     width_range = [args.width, 1.0]
-    #     resolution_dict = {'cifar': [[32], [32, 28], [32, 28, 24], [32, 28, 24, 20]], 'imagenet': [[224]]}
-    #     resolutions = resolution_dict['cifar'][args.resolution_type] if 'cifar' in args.data_dir else resolution_dict['imagenet'][args.resolution_type]
-    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
-    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num, 
-    #                         'width_range': width_range, 'resolutions': resolutions} for i in range(args.thread_number)]
     else:
         raise ValueError('Invalid --method chosen! Please choose from availible methods.')
 
@@ -334,7 +289,7 @@ if __name__ == "__main__":
         pool = cm.MyPool(args.thread_number, init_process, (client_info, Client))
 
     
-        time.sleep(15 * (args.client_number/16)) #  Allow time for threads to start up
+        time.sleep(150 * (args.client_number/16)) #  Allow time for threads to start up
         for r in range(args.comm_round):
             logging.info('************** Round: {} ***************'.format(r))
             round_start = time.time()
@@ -342,6 +297,8 @@ if __name__ == "__main__":
             client_outputs = [c for sublist in client_outputs for c in sublist]
             server_outputs = server.run(client_outputs)
             round_end = time.time()
+            wandb.log({"weights": server_outputs[0]})
+            wandb.log({"Round Time": round_end-round_start, "round": r})
             out_str = ' Round {} Time: {}s \n'.format(r, round_end-round_start)
             logging.info(out_str)
             with open('{}/out.log'.format(args.save_path), 'a+') as out_file:

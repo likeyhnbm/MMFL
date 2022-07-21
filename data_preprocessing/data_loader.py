@@ -279,8 +279,8 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224):
     if 'cifar' in datadir:
         train_transform, test_transform = _data_transforms_cifar(datadir,img_size)
         dl_obj = CIFAR_truncated
-        workers=64
-        persist=False
+        workers=8
+        persist=True
     elif 'cinic' in datadir:
         train_transform, test_transform = _data_transforms_cinic10(datadir)
         dl_obj = ImageFolderTruncated

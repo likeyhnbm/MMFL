@@ -13,7 +13,7 @@ def build_promptmodel(basic_model, num_classes=2, edge_size=384, patch_size=16,
 
 
     model = VPT_ViT(img_size=edge_size, patch_size=patch_size, Prompt_Token_num=Prompt_Token_num,
-                    VPT_type=VPT_type,num_classes=num_classes)
+                    VPT_type=VPT_type,num_classes=num_classes,embed_dim=basic_model.embed_dim)
 
     model.load_state_dict(basic_model.state_dict(), False)
     model.New_CLS_head(num_classes)
