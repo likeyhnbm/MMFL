@@ -101,6 +101,25 @@ class CIFAR_truncated(data.Dataset):
     def __len__(self):
         return len(self.data)
 
+# Reduce sample number
+class CifarReduced(CIFAR_truncated):
+    def __init__(self, root, sample_num, dataidxs=None, train=True, transform=None, target_transform=None, download=False):
+        self.root = root
+        self.dataidxs = dataidxs
+        self.train = train
+        self.transform = transform
+        self.target_transform = target_transform
+        self.download = download
+        self.data, self.target = self.__build_truncated_dataset__()
+        total_num = len(self.data)
+        if total_num > sample_num and self.train:
+            self.dataidxs = np.random.choice(total_num, sample_num)
+            self.data, self.target = self.__build_truncated_dataset__()
+
+        
+
+
+
 # Imagenet
 class ImageFolder_custom(DatasetFolder):
     def __init__(self, root, dataidxs=None, train=True, transform=None, target_transform=None, download=False):

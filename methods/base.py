@@ -37,22 +37,22 @@ class Base_Client():
     
     def run(self, received_info):
         client_results = []
-        try:
-            for client_idx in self.client_map[self.round]:
-                self.load_client_state_dict(received_info)
-                self.train_dataloader = self.train_data[client_idx]
-                self.test_dataloader = self.test_data[client_idx]
-                if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None and self.train_dataloader._iterator._shutdown:
-                    self.train_dataloader._iterator = self.train_dataloader._get_iterator()
-                self.client_index = client_idx
-                num_samples = len(self.train_dataloader)*self.args.batch_size
-                weights = self.train()
-                acc = self.test()
-                client_results.append({'weights':weights, 'num_samples':num_samples,'acc':acc, 'client_index':self.client_index})
-                if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None:
-                    self.train_dataloader._iterator._shutdown_workers()
-        except:
-            print(self.client_index, self.round)
+        # try:
+        for client_idx in self.client_map[self.round]:
+            self.load_client_state_dict(received_info)
+            self.train_dataloader = self.train_data[client_idx]
+            self.test_dataloader = self.test_data[client_idx]
+            if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None and self.train_dataloader._iterator._shutdown:
+                self.train_dataloader._iterator = self.train_dataloader._get_iterator()
+            self.client_index = client_idx
+            num_samples = len(self.train_dataloader)*self.args.batch_size
+            weights = self.train()
+            acc = self.test()
+            client_results.append({'weights':weights, 'num_samples':num_samples,'acc':acc, 'client_index':self.client_index})
+            if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None:
+                self.train_dataloader._iterator._shutdown_workers()
+        # except:
+        #     print(self.client_index, self.round)
 
         self.round += 1
         return client_results
@@ -147,7 +147,8 @@ class Base_Server():
 
     def log_info(self, client_info, acc):
         client_acc = sum([c['acc'] for c in client_info])/len(client_info)
-        wandb.log({"Test/AccTop1": acc, "Client_Train/AccTop1": client_acc, "round": self.round})
+        if not self.args.debug:
+            wandb.log({"Test/AccTop1": acc, "Client_Train/AccTop1": client_acc, "round": self.round})
         out_str = 'Test/AccTop1: {}, Client_Train/AccTop1: {}, round: {}\n'.format(acc, client_acc, self.round)
         with open('{}/out.log'.format(self.save_path), 'a+') as out_file:
             out_file.write(out_str)
@@ -184,6 +185,7 @@ class Base_Server():
                 pred = self.model(x)
                 # loss = self.criterion(pred, target)
                 _, predicted = torch.max(pred, 1)
+                predicted = predicted.to(target.device)
                 correct = predicted.eq(target).sum()
 
                 test_correct += correct.item()

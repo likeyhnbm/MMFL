@@ -17,6 +17,7 @@ from models.resnet_ours import resnet56 as resnet56_ours
 from models.resnet_ours import resnet18 as resnet18_ours
 import timm
 from models.vpt import build_promptmodel
+from models.vpt_official import build_promptmodel as build_official
 
 import wandb
 
@@ -39,6 +40,7 @@ import methods.ours as ours
 import methods.scratch as scratch
 import methods.pretrain as pretrain
 import methods.prompt as prompt
+import methods.prompt_official as prompt_official
 import data_preprocessing.custom_multiprocess as cm
 
 
@@ -48,14 +50,18 @@ def add_args(parser):
     return a parser added with args required by fit
     """
     # Training settings
-    parser.add_argument('--method', type=str, default='scratch', choices=['scratch','pretrain','prompt'], metavar='M',
+    parser.add_argument('--method', type=str, default='scratch', choices=['scratch','pretrain','prompt','prompt_official','head'], metavar='M',
                         help='baseline method')
     parser.add_argument('--prompt_num', type=int, default=10, metavar='N',
                         help='prompt number for vpt') 
-    parser.add_argument('--vit_type', type=str, default='vit_small_patch16_384', choices=['vit_small_patch32_224','vit_small_patch16_224', 'vit_base_patch16_224'] , metavar='N',
+    parser.add_argument('--vit_type', type=str, default='vit_small_patch16_384', choices=['vit_small_patch32_224','vit_small_patch16_224', 'vit_base_patch16_224','vit_base_patch16_224_in21k'] , metavar='N',
                         help='type of vpt')  
     parser.add_argument('--vpt_type', type=str, default='Shallow', choices= ['Shallow', 'Deep'], metavar='N',
                         help='type of vpt')
+    parser.add_argument('--vpt_projection', type=int, default=-1, metavar='D',
+                    help='projection dimension for VIT')
+    parser.add_argument('--vpt_drop', type=float, default=0.1, metavar='D',
+                    help='projection dimension for VIT')
 
     parser.add_argument('--model', type=str, default='vit', choices=['resnet18','resnet56','vit'], metavar='M',
                         help='neural network used in training')
@@ -94,6 +100,9 @@ def add_args(parser):
 
     parser.add_argument('--mu', type=float, default=0.001, metavar='MU',
                         help='mu (default: 0.001)')
+    parser.add_argument('--rho', type=float, default=0.05, metavar='PHO',
+                        help='pho for SAM (default: 0.05)')
+
     parser.add_argument('--width', type=float, default=0.7, metavar='WI',
                         help='minimum width for mutual training')
     parser.add_argument('--mult', type=float, default=1.0, metavar='MT',
@@ -119,7 +128,14 @@ def add_args(parser):
     parser.add_argument('--optimizer', default='adamw',choices= ['sgd','adamw'],type=str,
                     help='selection of optimizer')            
     parser.add_argument('--stat', action='store_true', default=False,
-                    help='show the state of model')    
+                    help='show the state of model')  
+    parser.add_argument('--freeze_all', action='store_true', default=False,
+                    help='freeze the entire model') 
+    parser.add_argument('--sam_mode', type=str, default='sam', choices= ['asam', 'sam', 'none'], metavar='N',
+                        help='type of sam')
+    parser.add_argument('--sample_num', type=int, default=-1, metavar='N',
+                        help='how many sample will be trained in total. -1 for no reduce')
+
     args = parser.parse_args()
 
     return args
@@ -133,8 +149,8 @@ def set_random_seed(seed=1):
     torch.cuda.manual_seed_all(seed)
     ## NOTE: If you want every run to be exactly the same each time
     ##       uncomment the following lines
-    # torch.backends.cudnn.deterministic = True
-    # torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 # Helper Functions
 def init_process(q, Client):
@@ -207,7 +223,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     args = add_args(parser)
 
-    wandb.init(config=args)
+
+
 
 
     data_name = datapath2str(args.data_dir)
@@ -215,11 +232,14 @@ if __name__ == "__main__":
     save_path = './logs/{}_lr{:.0e}_e{}_c{}_{}_{}'.format(
                         args.method, args.lr, args.epochs, args.client_number, data_name, time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
     args.save_path = save_path
+    if not args.debug:
+        wandb.init(config=args)
+        wandb.run.name = save_path.split(os.path.sep)[-1]
 
     # get data
     img_size = 224 if '224' in args.vit_type else 384
     train_data_num, test_data_num, train_data_global, test_data_global, data_local_num_dict, train_data_local_dict, test_data_local_dict,\
-         class_num = dl.load_partition_data(args.data_dir, args.partition_method, args.partition_alpha, args.client_number, args.batch_size,img_size)
+         class_num = dl.load_partition_data(args.data_dir, args.partition_method, args.partition_alpha, args.client_number, args.batch_size,img_size, args.sample_num)
 
     mapping_dict = allocate_clients_to_threads(args)
     # pdb.set_trace()
@@ -254,6 +274,17 @@ if __name__ == "__main__":
         server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
                             'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]
+    elif args.method in ['prompt_official', 'head']:
+        if args.method == 'head':
+            args.prompt_num = 0
+        Server = prompt_official.Server
+        Client = prompt_official.Client
+        basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
+        Model = build_official
+        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
+        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+                            'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]
+
     else:
         raise ValueError('Invalid --method chosen! Please choose from availible methods.')
 
@@ -272,14 +303,13 @@ if __name__ == "__main__":
             os.makedirs(server_dict['save_path'])
         server = Server(server_dict, args)
         server_outputs = server.start()
-        if args.stat:
-            # from torchsummary import summary
-            # summary(server.model,(3,224,224))
-            print(get_parameter_number(server.model))
-            exit('Stat finished')
+
+        param_num = get_parameter_number(server.model)
+        if not args.debug:
+            wandb.log({"Params/Total": param_num["Total"], "Params/Trainable":param_num["Trainable"]})
         # Start Federated Training
         #init nodes
-        client_info = Queue()
+        client_info = Queue(32)
         # clients = {}
         for i in range(args.thread_number):
             client_info.put((client_dict[i], args))
@@ -289,7 +319,7 @@ if __name__ == "__main__":
         pool = cm.MyPool(args.thread_number, init_process, (client_info, Client))
 
     
-        time.sleep(150 * (args.client_number/16)) #  Allow time for threads to start up
+        time.sleep(60 * (args.client_number/args.thread_number)) #  Allow time for threads to start up
         for r in range(args.comm_round):
             logging.info('************** Round: {} ***************'.format(r))
             round_start = time.time()
@@ -297,8 +327,8 @@ if __name__ == "__main__":
             client_outputs = [c for sublist in client_outputs for c in sublist]
             server_outputs = server.run(client_outputs)
             round_end = time.time()
-            wandb.log({"weights": server_outputs[0]})
-            wandb.log({"Round Time": round_end-round_start, "round": r})
+            if not args.debug:
+                wandb.log({"Round Time": round_end-round_start, "round": r})
             out_str = ' Round {} Time: {}s \n'.format(r, round_end-round_start)
             logging.info(out_str)
             with open('{}/out.log'.format(args.save_path), 'a+') as out_file:

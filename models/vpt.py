@@ -4,6 +4,7 @@
 
 import torch
 import torch.nn as nn
+import copy
 
 from timm.models.vision_transformer import VisionTransformer, PatchEmbed
 
@@ -15,7 +16,7 @@ def build_promptmodel(basic_model, num_classes=2, edge_size=384, patch_size=16,
     model = VPT_ViT(img_size=edge_size, patch_size=patch_size, Prompt_Token_num=Prompt_Token_num,
                     VPT_type=VPT_type,num_classes=num_classes,embed_dim=basic_model.embed_dim)
 
-    model.load_state_dict(basic_model.state_dict(), False)
+    model.load_state_dict(basic_model.state_dict(), False)    #TODO: Check it.
     model.New_CLS_head(num_classes)
     model.Freeze()
 
@@ -67,14 +68,13 @@ class VPT_ViT(VisionTransformer):
             pass
 
     def obtain_prompt(self):
-        prompt_state_dict = {'head': self.head.state_dict(),
-                             'Prompt_Tokens': self.Prompt_Tokens}
-        # print(prompt_state_dict)
+
+        prompt_state_dict = {k:v for k,v in self.state_dict().items() if k in ["head." + s for s in self.head.state_dict().keys()] or k=='Prompt_Tokens'}
         return prompt_state_dict
 
-    def load_prompt(self, prompt_state_dict):
-        self.head.load_state_dict(prompt_state_dict['head'])
-        self.Prompt_Tokens = prompt_state_dict['Prompt_Tokens']
+    def load_prompt(self, prompt_state_dict, strict=False):
+        # self.head.load_state_dict(prompt_state_dict['head'], strict=strict)
+        self.load_state_dict(prompt_state_dict, strict=False)
 
     def forward_features(self, x):
         x = self.patch_embed(x)

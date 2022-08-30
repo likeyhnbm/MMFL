@@ -6,7 +6,7 @@ import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
 
-from data_preprocessing.datasets import CIFAR_truncated, ImageFolder_custom, ImageFolderTruncated
+from data_preprocessing.datasets import CIFAR_truncated, ImageFolder_custom, ImageFolderTruncated, CifarReduced
 from PIL import Image
 
 from typing import Callable
@@ -92,7 +92,7 @@ class Lighting(object):
         return self.__class__.__name__ + '()'
 
 def _data_transforms_cifar(datadir,img_size=32):
-    if "cifar100" in datadir:
+    if "cifar100" or "cifar-100"  in datadir:
         CIFAR_MEAN = [0.5071, 0.4865, 0.4409]
         CIFAR_STD = [0.2673, 0.2564, 0.2762]
     else:
@@ -210,10 +210,14 @@ def _data_transforms_prompt(datadir):
 
     return train_transform, valid_transform
 
-def load_data(datadir):
+def load_data(datadir, sample_num=-1):
     if 'cifar' in datadir:
-        train_transform, test_transform = _data_transforms_cifar(datadir)
-        dl_obj = CIFAR_truncated
+        if sample_num>-1:
+            train_transform, test_transform = _data_transforms_cifar(datadir)
+            dl_obj = CifarReduced
+        else:
+            train_transform, test_transform = _data_transforms_cifar(datadir)
+            dl_obj = CIFAR_truncated
     elif 'cinic' in datadir:
         train_transform, test_transform = _data_transforms_cinic10(datadir)
         dl_obj = ImageFolderTruncated
@@ -223,17 +227,22 @@ def load_data(datadir):
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
         dl_obj = ImageFolder_custom
-    train_ds = dl_obj(datadir, train=True, download=True, transform=train_transform)
-    test_ds = dl_obj(datadir, train=False, download=True, transform=test_transform)
+
+    if sample_num>-1:
+        train_ds = dl_obj(datadir, sample_num,train=True, download=True, transform=train_transform)
+        test_ds = dl_obj(datadir, sample_num, train=False, download=True, transform=test_transform)
+    else:
+        train_ds = dl_obj(datadir, train=True, download=True, transform=train_transform)
+        test_ds = dl_obj(datadir, train=False, download=True, transform=test_transform)
 
     y_train, y_test = train_ds.target, test_ds.target
 
     return (y_train, y_test)
 
 
-def partition_data(datadir, partition, n_nets, alpha):
+def partition_data(datadir, partition, n_nets, alpha, sample_num=-1):
     logging.info("*********partition data***************")
-    y_train, y_test = load_data(datadir)
+    y_train, y_test = load_data(datadir, sample_num)
     n_train = y_train.shape[0]
     n_test = y_test.shape[0]
     class_num = len(np.unique(y_train))
@@ -275,10 +284,11 @@ def partition_data(datadir, partition, n_nets, alpha):
 
 
 # for centralized training
-def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224):
+def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, sample_num=-1):
     if 'cifar' in datadir:
+        
         train_transform, test_transform = _data_transforms_cifar(datadir,img_size)
-        dl_obj = CIFAR_truncated
+        dl_obj = CIFAR_truncated if sample_num == -1 else CifarReduced
         workers=8
         persist=True
     elif 'cinic' in datadir:
@@ -297,16 +307,23 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224):
         workers=8
         persist=True
 
-    train_ds = dl_obj(datadir, dataidxs=dataidxs, train=True, transform=train_transform, download=True)
-    test_ds = dl_obj(datadir, train=False, transform=test_transform, download=True)
+
+    if sample_num>-1:
+        train_ds = dl_obj(datadir, sample_num, dataidxs=dataidxs, train=True, transform=train_transform, download=True)
+        test_ds = dl_obj(datadir, sample_num, train=False, transform=test_transform, download=True)
+        train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
+        test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
+    else:
+        train_ds = dl_obj(datadir, dataidxs=dataidxs, train=True, transform=train_transform, download=True)
+        test_ds = dl_obj(datadir, train=False, transform=test_transform, download=True)
     
-    train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=True, num_workers=workers, persistent_workers=persist)
-    test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=True, num_workers=workers, persistent_workers=persist)
+        train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=True, num_workers=workers, persistent_workers=persist)
+        test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=True, num_workers=workers, persistent_workers=persist)
 
     return train_dl, test_dl
 
-def load_partition_data(data_dir, partition_method, partition_alpha, client_number, batch_size, img_size=224):
-    class_num, net_dataidx_map, traindata_cls_counts = partition_data(data_dir, partition_method, client_number, partition_alpha)
+def load_partition_data(data_dir, partition_method, partition_alpha, client_number, batch_size, img_size=224, sample_num=-1):
+    class_num, net_dataidx_map, traindata_cls_counts = partition_data(data_dir, partition_method, client_number, partition_alpha, sample_num=sample_num)
 
     logging.info("traindata_cls_counts = " + str(traindata_cls_counts))
     train_data_num = sum([len(net_dataidx_map[r]) for r in range(client_number)])
@@ -328,7 +345,7 @@ def load_partition_data(data_dir, partition_method, partition_alpha, client_numb
         logging.info("client_idx = %d, local_sample_number = %d" % (client_idx, local_data_num))
 
         # training batch size = 64; algorithms batch size = 32
-        train_data_local, test_data_local = get_dataloader(data_dir, batch_size, batch_size, dataidxs,img_size)
+        train_data_local, test_data_local = get_dataloader(data_dir, batch_size, batch_size, dataidxs,img_size, sample_num=sample_num)
         logging.info("client_idx = %d, batch_num_train_local = %d, batch_num_test_local = %d" % (
             client_idx, len(train_data_local), len(test_data_local)))
         train_data_local_dict[client_idx] = train_data_local
