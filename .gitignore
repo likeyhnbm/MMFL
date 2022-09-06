@@ -1,13 +1,18 @@
 # cache
 __pycache__
 *.pyc
+.vscode
 
 # data
 data
 dataset
+*.zip
+*.gz
 # log
 logs
 wandb
 
 # test files
 test.ipynb
+*.ipynb
+

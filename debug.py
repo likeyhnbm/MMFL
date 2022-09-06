@@ -131,7 +131,7 @@ def add_args(parser):
                     help='show the state of model')  
     parser.add_argument('--freeze_all', action='store_true', default=False,
                     help='freeze the entire model') 
-    parser.add_argument('--sam_mode', type=str, default='none', choices= ['asam', 'sam', 'none'], metavar='N',
+    parser.add_argument('--sam_mode', type=str, default='sam', choices= ['asam', 'sam', 'none'], metavar='N',
                         help='type of sam')
     parser.add_argument('--sample_num', type=int, default=-1, metavar='N',
                         help='how many sample will be trained in total. -1 for no reduce')
@@ -161,14 +161,14 @@ def init_process(q, Client):
     # client.server = 
 
 def run_clients(received_info):
-    # try:
+    try:
         # received_info, save_path = info
         # client, received_info = client_args
         # glo.set_value('writer', SummaryWriter(log_dir=save_path))
         return client.run(received_info)
-    # except KeyboardInterrupt:
-    #     logging.info('exiting')
-    #     return None
+    except KeyboardInterrupt:
+        logging.info('exiting')
+        return None
 
 def allocate_clients_to_threads(args):
     mapping_dict = defaultdict(list)
@@ -233,7 +233,7 @@ if __name__ == "__main__":
                         args.method, args.lr, args.epochs, args.client_number, data_name, time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
     args.save_path = save_path
     if not args.debug:
-        wandb.init(config=args,project='FedPrompt_new')
+        wandb.init(config=args)
         wandb.run.name = save_path.split(os.path.sep)[-1]
 
     # get data

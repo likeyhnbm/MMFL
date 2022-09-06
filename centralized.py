@@ -50,11 +50,11 @@ def add_args(parser):
     return a parser added with args required by fit
     """
     # Training settings
-    parser.add_argument('--method', type=str, default='scratch', choices=['scratch','pretrain','prompt','prompt_official','head'], metavar='M',
+    parser.add_argument('--method', type=str, default='scratch', choices=['scratch','pretrain','prompt','prompt_official'], metavar='M',
                         help='baseline method')
     parser.add_argument('--prompt_num', type=int, default=10, metavar='N',
                         help='prompt number for vpt') 
-    parser.add_argument('--vit_type', type=str, default='vit_small_patch16_384', choices=['vit_small_patch32_224','vit_small_patch16_224', 'vit_base_patch16_224','vit_base_patch16_224_in21k'] , metavar='N',
+    parser.add_argument('--vit_type', type=str, default='vit_small_patch16_384', choices=['vit_small_patch32_224','vit_small_patch16_224', 'vit_base_patch16_224'] , metavar='N',
                         help='type of vpt')  
     parser.add_argument('--vpt_type', type=str, default='Shallow', choices= ['Shallow', 'Deep'], metavar='N',
                         help='type of vpt')
@@ -131,10 +131,8 @@ def add_args(parser):
                     help='show the state of model')  
     parser.add_argument('--freeze_all', action='store_true', default=False,
                     help='freeze the entire model') 
-    parser.add_argument('--sam_mode', type=str, default='none', choices= ['asam', 'sam', 'none'], metavar='N',
+    parser.add_argument('--sam_mode', type=str, default='sam', choices= ['asam', 'sam', 'none'], metavar='N',
                         help='type of sam')
-    parser.add_argument('--sample_num', type=int, default=-1, metavar='N',
-                        help='how many sample will be trained in total. -1 for no reduce')
 
     args = parser.parse_args()
 
@@ -161,14 +159,14 @@ def init_process(q, Client):
     # client.server = 
 
 def run_clients(received_info):
-    # try:
+    try:
         # received_info, save_path = info
         # client, received_info = client_args
         # glo.set_value('writer', SummaryWriter(log_dir=save_path))
         return client.run(received_info)
-    # except KeyboardInterrupt:
-    #     logging.info('exiting')
-    #     return None
+    except KeyboardInterrupt:
+        logging.info('exiting')
+        return None
 
 def allocate_clients_to_threads(args):
     mapping_dict = defaultdict(list)
@@ -223,23 +221,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     args = add_args(parser)
 
-
-
-
-
     data_name = datapath2str(args.data_dir)
 
     save_path = './logs/{}_lr{:.0e}_e{}_c{}_{}_{}'.format(
                         args.method, args.lr, args.epochs, args.client_number, data_name, time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
     args.save_path = save_path
+
     if not args.debug:
-        wandb.init(config=args,project='FedPrompt_new')
+        wandb.init(config=args)
         wandb.run.name = save_path.split(os.path.sep)[-1]
+
 
     # get data
     img_size = 224 if '224' in args.vit_type else 384
     train_data_num, test_data_num, train_data_global, test_data_global, data_local_num_dict, train_data_local_dict, test_data_local_dict,\
-         class_num = dl.load_partition_data(args.data_dir, args.partition_method, args.partition_alpha, args.client_number, args.batch_size,img_size, args.sample_num)
+         class_num = dl.load_partition_data(args.data_dir, args.partition_method, args.partition_alpha, args.client_number, args.batch_size,img_size)
 
     mapping_dict = allocate_clients_to_threads(args)
     # pdb.set_trace()
@@ -274,9 +270,7 @@ if __name__ == "__main__":
         server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
                             'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]
-    elif args.method in ['prompt_official', 'head']:
-        if args.method == 'head':
-            args.prompt_num = 0
+    elif args.method=='prompt_official':
         Server = prompt_official.Server
         Client = prompt_official.Client
         basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
@@ -302,6 +296,8 @@ if __name__ == "__main__":
         if not os.path.exists(server_dict['save_path']):
             os.makedirs(server_dict['save_path'])
         server = Server(server_dict, args)
+        server.model = torch.nn.DataParallel(server.model,output_device=torch.cuda.device_count()-1)
+        server.device = 'cuda:0'
         server_outputs = server.start()
 
         param_num = get_parameter_number(server.model)
@@ -309,23 +305,17 @@ if __name__ == "__main__":
             wandb.log({"Params/Total": param_num["Total"], "Params/Trainable":param_num["Trainable"]})
         # Start Federated Training
         #init nodes
-        client_info = Queue(32)
-        # clients = {}
-        for i in range(args.thread_number):
-            client_info.put((client_dict[i], args))
-            # clients[i] = Client(client_dict[i], args)
 
-        # Start server and get initial outputs
-        pool = cm.MyPool(args.thread_number, init_process, (client_info, Client))
-
-        if args.debug:
-            time.sleep(10 * (args.client_number/args.thread_number))
-        else:
-            time.sleep(60 * (args.client_number/args.thread_number)) #  Allow time for threads to start up
+        # args.epochs = args.epochs * args.comm_round
+    
+        client = Client(client_dict[0], args)
+        client.model = torch.nn.DataParallel(client.model)
+        
+    
         for r in range(args.comm_round):
             logging.info('************** Round: {} ***************'.format(r))
             round_start = time.time()
-            client_outputs = pool.map(run_clients, server_outputs)
+            client_outputs = [run_clients(server_outputs[0])]
             client_outputs = [c for sublist in client_outputs for c in sublist]
             server_outputs = server.run(client_outputs)
             round_end = time.time()
@@ -335,5 +325,4 @@ if __name__ == "__main__":
             logging.info(out_str)
             with open('{}/out.log'.format(args.save_path), 'a+') as out_file:
                 out_file.write(out_str)
-        pool.close()
-        pool.join()
+
