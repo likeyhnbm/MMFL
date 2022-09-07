@@ -13,9 +13,9 @@ from operator import mul
 from timm.models.vision_transformer import VisionTransformer, PatchEmbed, Block
 from copy import deepcopy
 
-def build_adapter_model(basic_model, num_classes=2, preducation_factor=8):
+def build_adapter_model(basic_model, num_classes=2, reducation_factor=8):
 
-    model = Adapter_ViT(basic_model=basic_model, preducation_factor=preducation_factor, num_classes=num_classes
+    model = Adapter_ViT(basic_model=basic_model, reducation_factor=reducation_factor, num_classes=num_classes
         )
 
     return model
@@ -50,6 +50,8 @@ class Adapter_ViT(nn.Module):
         self.basic_model.head = nn.Linear(self.embed_dim, num_classes)
 
         self._freeze()
+
+        pass
 
     def _freeze(self):
         for param in self.parameters():

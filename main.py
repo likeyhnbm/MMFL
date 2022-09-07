@@ -42,6 +42,7 @@ import methods.scratch as scratch
 import methods.pretrain as pretrain
 import methods.prompt as prompt
 import methods.prompt_official as prompt_official
+import methods.adapter as adapter
 import data_preprocessing.custom_multiprocess as cm
 
 
@@ -51,7 +52,7 @@ def add_args(parser):
     return a parser added with args required by fit
     """
     # Training settings
-    parser.add_argument('--method', type=str, default='scratch', choices=['scratch','pretrain','prompt','prompt_official','head'], metavar='M',
+    parser.add_argument('--method', type=str, default='scratch', metavar='M',
                         help='baseline method')
     parser.add_argument('--prompt_num', type=int, default=10, metavar='N',
                         help='prompt number for vpt') 
@@ -137,8 +138,8 @@ def add_args(parser):
     parser.add_argument('--sample_num', type=int, default=-1, metavar='N',
                         help='how many sample will be trained in total. -1 for no reduce')
 
-    parser.add_argument('--preducation_factor', type=int, default=8, metavar='N',
-                    help='preducation_factor for adapter')
+    parser.add_argument('--reducation_factor', type=int, default=8, metavar='N',
+                    help='reducation_factor for adapter')
 
     args = parser.parse_args()
 
@@ -290,8 +291,8 @@ if __name__ == "__main__":
                             'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]
 
     elif args.method=='adapter':
-        Server = prompt.Server
-        Client = prompt.Client
+        Server = adapter.Server
+        Client = adapter.Client
         basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
         Model = build_adapter_model
         server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}

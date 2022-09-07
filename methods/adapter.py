@@ -13,7 +13,7 @@ class Client(Base_Client):
 
         self.model = self.model_type(   basic_model=client_dict['basic_model'], 
                                         num_classes=self.num_classes,
-                                        preducation_factor=args.preducation_factor
+                                        reducation_factor=args.reducation_factor
                                     ).to(self.device)
         self.criterion = torch.nn.CrossEntropyLoss().to(self.device)
         params = filter(lambda p: p.requires_grad,self.model.parameters())
@@ -40,7 +40,7 @@ class Server(Base_Server):
         super().__init__(server_dict, args)
         self.model = self.model_type(   basic_model=server_dict['basic_model'], 
                                         num_classes=self.num_classes,
-                                        preducation_factor=args.preducation_factor
+                                        reducation_factor=args.reducation_factor
                                     ).to(self.device)      
         if not self.args.debug:
             wandb.watch(self.model)
