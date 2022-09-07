@@ -17,6 +17,7 @@ from models.resnet_ours import resnet56 as resnet56_ours
 from models.resnet_ours import resnet18 as resnet18_ours
 import timm
 from models.vpt import build_promptmodel
+from models.adapter import build_adapter_model
 from models.vpt_official import build_promptmodel as build_official
 
 import wandb
@@ -135,6 +136,9 @@ def add_args(parser):
                         help='type of sam')
     parser.add_argument('--sample_num', type=int, default=-1, metavar='N',
                         help='how many sample will be trained in total. -1 for no reduce')
+
+    parser.add_argument('--preducation_factor', type=int, default=8, metavar='N',
+                    help='preducation_factor for adapter')
 
     args = parser.parse_args()
 
@@ -285,6 +289,14 @@ if __name__ == "__main__":
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
                             'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]
 
+    elif args.method=='adapter':
+        Server = prompt.Server
+        Client = prompt.Client
+        basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
+        Model = build_adapter_model
+        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
+        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+                            'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]       
     else:
         raise ValueError('Invalid --method chosen! Please choose from availible methods.')
 
