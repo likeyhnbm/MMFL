@@ -6,6 +6,7 @@ from PIL import Image
 from torchvision.datasets import CIFAR10
 from torchvision.datasets import CIFAR100
 from torchvision.datasets import DatasetFolder, ImageFolder
+from medmnist import ChestMNIST
 
 logging.basicConfig()
 logger = logging.getLogger()
@@ -36,6 +37,51 @@ def default_loader(path):
         return accimage_loader(path)
     else:
         return pil_loader(path)
+
+
+class ChestMINIST_truncated(ChestMNIST):
+    
+    def __init__(self, root, dataidxs=None, train=True, transform=None, target_transform=None, download=False):
+
+        self.split = 'train' if train else 'test'
+        super(ChestMINIST_truncated,self).__init__(root=root, split=self.split, 
+                                transform=transform, target_transform=target_transform, download=download)
+        self.dataidxs = dataidxs
+        self.train = train
+
+        if self.dataidxs is not None:
+            self.imgs = self.imgs[self.dataidxs]
+            self.labels = self.labels[self.dataidxs]
+
+        self.data = self.imgs
+        self.target = self.labels
+
+    def truncate_channel(self, index):
+        for i in range(index.shape[0]):
+            gs_index = index[i]
+            self.imgs[gs_index, :, :, 1] = 0.0
+            self.imgs[gs_index, :, :, 2] = 0.0
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        img, target = self.imgs[index], self.labels[index]
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return img, target
+
+    def __len__(self):
+        return len(self.imgs)        
 
 
 class CIFAR_truncated(data.Dataset):
