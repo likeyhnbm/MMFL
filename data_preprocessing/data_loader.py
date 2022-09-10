@@ -6,7 +6,7 @@ import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
 
-from data_preprocessing.datasets import CIFAR_truncated, ImageFolder_custom, ImageFolderTruncated, CifarReduced
+from data_preprocessing.datasets import CIFAR_truncated, ImageFolder_custom, ImageFolderTruncated, CifarReduced, ChestMINIST_truncated
 from PIL import Image
 
 from typing import Callable
@@ -210,6 +210,16 @@ def _data_transforms_prompt(datadir):
 
     return train_transform, valid_transform
 
+def _data_transforms_chestminist(datadir):
+
+    train_transform = valid_transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[.5], std=[.5])
+    ])
+   
+    return train_transform, valid_transform
+
+
 def load_data(datadir, sample_num=-1):
     if 'cifar' in datadir:
         if sample_num>-1:
@@ -224,6 +234,9 @@ def load_data(datadir, sample_num=-1):
     elif 'CropDisease' in datadir:
         train_transform, test_transform = _data_transforms_prompt(datadir)
         dl_obj = ImageFolder_custom
+    elif 'chestminist' in datadir:
+        train_transform, test_transform = _data_transforms_chestminist(datadir)
+        dl_obj = ChestMINIST_truncated
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
         dl_obj = ImageFolder_custom
@@ -301,6 +314,11 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
         dl_obj = ImageFolder_custom
         workers=16
         persist=False
+    elif 'chestminist' in datadir:
+        train_transform, test_transform = _data_transforms_chestminist(datadir)
+        dl_obj = ChestMINIST_truncated
+        workers=8
+        persist=True
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
         dl_obj = ImageFolder_custom

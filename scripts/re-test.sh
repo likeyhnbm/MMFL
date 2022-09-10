@@ -1,3 +1,3 @@
 # re-test
-sh scripts/c16_r_1_alpha_0.1/prompt.sh
-sh scripts/c64_r_0.125_alpha_0.1/prompt.sh
+python main.py --partition_alpha 0.1 --method "prompt_official" --client_sample 1 --client_number 16 --thread_number 16 --comm_round 50 --lr 1e-2 --epochs 10 --data_dir dataset/cifar100/ --batch_size 64 --vpt_type Deep --vit_type vit_base_patch16_224_in21k --optimizer sgd --sam_mode none --vpt_projection -1
+python main.py --partition_alpha 0.1 --method "prompt_official" --client_sample 0.125 --client_number 64 --thread_number 16 --comm_round 50 --lr 1e-2 --epochs 10 --data_dir dataset/cifar100/ --batch_size 64 --vpt_type Deep --vit_type vit_base_patch16_224_in21k --optimizer sgd --sam_mode none --vpt_projection -1
