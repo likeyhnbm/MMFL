@@ -222,36 +222,33 @@ def _data_transforms_chestminist(datadir, img_size=28):
    
     return train_transform, valid_transform
 
-def _data_transforms_cifar(datadir,img_size=1024):
-    if "cifar100" or "cifar-100"  in datadir:
-        CIFAR_MEAN = [0.5071, 0.4865, 0.4409]
-        CIFAR_STD = [0.2673, 0.2564, 0.2762]
-    else:
-        CIFAR_MEAN = [0.49139968, 0.48215827, 0.44653124]
-        CIFAR_STD = [0.24703233, 0.24348505, 0.26158768]
+def _data_transforms_cheestxray(datadir, img_size=1024):
+    
+    train_mean = [0.485, 0.456, 0.406]
+    train_std = [0.229, 0.224, 0.225]
+
+    test_mean = [-0.0692, -0.0692, -0.0692]
+    test_std = [0.4835, 0.4835, 0.4835]
 
     train_transform = transforms.Compose([
-        transforms.ToPILImage(),
+        # transforms.ToPILImage(), # Must convert to PIL image for subsequent operations to run
         transforms.Resize(img_size),
-        transforms.RandomCrop(img_size, padding=4),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
+        transforms.RandomRotation(20), # Image augmentation
+        transforms.ToTensor(), # Must convert to pytorch tensor for subsequent operations to run
+        transforms.Normalize(train_mean, train_std),
     ])
-
-    # train_transform.transforms.append(Cutout(16))
-
     valid_transform = transforms.Compose([
-        transforms.ToPILImage(),
+        # transforms.ToPILImage(), # Must convert to PIL image for subsequent operations to run
         transforms.Resize(img_size),
-        transforms.ToTensor(),
-        transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
+        transforms.RandomRotation(20), # Image augmentation
+        transforms.ToTensor(), # Must convert to pytorch tensor for subsequent operations to run
+        transforms.Normalize(test_mean, test_std),
     ])
 
     return train_transform, valid_transform
 
 
-def load_data(datadir, sample_num=-1):
+def load_data(datadir, img_size=224, sample_num=-1):
     if 'cifar' in datadir:
         if sample_num>-1:
             train_transform, test_transform = _data_transforms_cifar(datadir)
@@ -268,6 +265,9 @@ def load_data(datadir, sample_num=-1):
     elif 'chestmnist' in datadir:
         train_transform, test_transform = _data_transforms_chestminist(datadir)
         dl_obj = ChestMINIST_truncated
+    elif 'chestxray' in datadir:
+        train_transform, test_transform = _data_transforms_cheestxray(datadir, img_size)
+        dl_obj = ChestXray14
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
         dl_obj = ImageFolder_custom
@@ -350,6 +350,11 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
         dl_obj = ChestMINIST_truncated
         workers=8
         persist=True
+    elif 'chestxray' in datadir:
+        train_transform, test_transform = _data_transforms_cheestxray(datadir, img_size)
+        dl_obj = ChestXray14
+        workers=8
+        persist=True 
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
         dl_obj = ImageFolder_custom

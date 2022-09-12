@@ -46,8 +46,6 @@ def default_loader(path):
 # class ChestMINIST_truncated(ChestMNIST):
 class ChestMINIST_truncated:
     pass
-class ChestXray14:
-    pass
     
 #     def __init__(self, root, dataidxs=None, train=True, transform=None, target_transform=None, download=False):
 
@@ -93,9 +91,10 @@ class ChestXray14:
 
 class ChestXray14(VisionDataset):
     
-    def __init__(self, root: str, train=True, transforms: Optional[Callable] = None, transform: Optional[Callable] = None, target_transform: Optional[Callable] = None):
+    def __init__(self, root: str, train=True, transforms: Optional[Callable] = None, transform: Optional[Callable] = None, target_transform: Optional[Callable] = None, dataidxs=None, download=True):
         
         super().__init__(root, transforms, transform, target_transform)
+        self.dataidxs = dataidxs
         # Get splits
         split_path = os.path.join(root, 'train_val_list.txt') if train else os.path.join(root, 'test_list.txt')
         with open(split_path) as f:
@@ -110,9 +109,10 @@ class ChestXray14(VisionDataset):
         # add file path
         annos['folder'] = [os.path.join(root, self._idx_to_folder(i)) for i in range(len(annos))]
 
-
         self.annos = annos['Finding Labels'][splits].reset_index().values.tolist()
         self.path = annos['folder'][splits].reset_index().values.tolist()
+
+        self.path = np.array(self.path)
 
         for info in self.annos:
             info[-1] = info[-1].partition('|')[0]
@@ -127,7 +127,20 @@ class ChestXray14(VisionDataset):
         self.classes = set([label for _, label in self.annos])
         self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
 
+        self.data = np.array([file_name for file_name, label in self.annos])
+        self.target = np.array([self.class_to_idx[label] for file_name, label in self.annos])
 
+
+
+        if self.dataidxs is not None:
+            self.data = self.data[self.dataidxs]
+            self.target = self.target[self.dataidxs]
+            self.path = self.path[self.dataidxs]
+
+        if self.transform is None:
+            self.transform = transforms.Compose([
+                transforms.ToTensor(),
+                ])
 
     def _idx_to_folder(self,idx):
         nums = [4999] + [10000]*10 + [7121]
@@ -139,7 +152,8 @@ class ChestXray14(VisionDataset):
                 return base % i
 
     def __getitem__(self, index: int):
-        file_name, label = self.annos[index]
+        file_name = self.data[index]
+        label = self.target[index]
         name, path = self.path[index]
 
         assert file_name == name, "Data loaded incorrectly!"
@@ -147,7 +161,6 @@ class ChestXray14(VisionDataset):
         file_path = os.path.join(path,name)
 
         sample = self.loader(file_path)
-        label = self.class_to_idx[label]
 
         if self.transform:
             sample = self.transform(sample)
@@ -159,7 +172,9 @@ class ChestXray14(VisionDataset):
 
 
     def __len__(self):
-        return len(self.annos)
+        return len(self.data)
+
+
 
 
 
