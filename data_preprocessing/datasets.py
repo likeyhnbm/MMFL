@@ -8,6 +8,7 @@ from torchvision.datasets import CIFAR10
 from torchvision.datasets import CIFAR100
 from torchvision.datasets import DatasetFolder, ImageFolder, VisionDataset
 import os
+import pandas as pd
 # from medmnist import ChestMNIST
 # import hub
 
