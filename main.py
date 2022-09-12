@@ -9,6 +9,7 @@ import argparse
 import timm
 from models.vpt import build_promptmodel
 from models.adapter import build_adapter_model
+from models.bias import build_bias_model
 from models.vpt_official import build_promptmodel as build_official
 
 import wandb
@@ -27,6 +28,7 @@ import methods.pretrain as pretrain
 import methods.prompt as prompt
 import methods.prompt_official as prompt_official
 import methods.adapter as adapter
+import methods.bias as bias
 import data_preprocessing.custom_multiprocess as cm
 
 
@@ -251,6 +253,15 @@ if __name__ == "__main__":
         # server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model': Model, 'num_classes': class_num, 'writer':writer}
         # client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
         #                     'client_map':mapping_dict[i], 'model': Model, 'num_classes': class_num, 'writer':writer} for i in range(args.thread_number)]
+        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':args.vit_type}
+        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':args.vit_type} for i in range(args.thread_number)]
+
+    elif args.method=='bias':
+        Server = bias.Server
+        Client = bias.Client
+        Model = build_bias_model
+
         server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':args.vit_type}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
                             'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':args.vit_type} for i in range(args.thread_number)]
