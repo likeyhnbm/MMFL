@@ -1,20 +1,11 @@
-from distutils.log import set_verbosity
-from secrets import choice
+
 import torch
-from torch._C import default_generator
-import torchvision
 import numpy as np
 import pdb
 import random
 import data_preprocessing.data_loader as dl
 import argparse
-from models.resnet import resnet56, resnet18
-from models.resnet_gradaug import resnet56 as resnet56_gradaug
-from models.resnet_gradaug import resnet18 as resnet18_gradaug
-from models.resnet_feddepth import resnet56 as resnet56_feddepth
-from models.resnet_feddepth import resnet18 as resnet18_feddepth
-from models.resnet_ours import resnet56 as resnet56_ours
-from models.resnet_ours import resnet18 as resnet18_ours
+
 import timm
 from models.vpt import build_promptmodel
 from models.adapter import build_adapter_model
@@ -31,13 +22,6 @@ import time
 
 
 # methods
-import methods.fedavg as fedavg
-import methods.gradaug as gradaug
-import methods.fedprox as fedprox
-import methods.moon as moon
-import methods.feddepth as feddepth
-import methods.mixup as mixup
-import methods.ours as ours
 import methods.scratch as scratch
 import methods.pretrain as pretrain
 import methods.prompt as prompt

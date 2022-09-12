@@ -1,12 +1,15 @@
 import logging
+from typing import Optional, Callable
 
 import numpy as np
 import torch.utils.data as data
 from PIL import Image
 from torchvision.datasets import CIFAR10
 from torchvision.datasets import CIFAR100
-from torchvision.datasets import DatasetFolder, ImageFolder
-from medmnist import ChestMNIST
+from torchvision.datasets import DatasetFolder, ImageFolder, VisionDataset
+import os
+# from medmnist import ChestMNIST
+# import hub
 
 logging.basicConfig()
 logger = logging.getLogger()
@@ -39,49 +42,124 @@ def default_loader(path):
         return pil_loader(path)
 
 
-class ChestMINIST_truncated(ChestMNIST):
+# class ChestMINIST_truncated(ChestMNIST):
+class ChestMINIST_truncated:
+    pass
+class ChestXray14:
+    pass
     
-    def __init__(self, root, dataidxs=None, train=True, transform=None, target_transform=None, download=False):
+#     def __init__(self, root, dataidxs=None, train=True, transform=None, target_transform=None, download=False):
 
-        self.split = 'train' if train else 'test'
-        super(ChestMINIST_truncated,self).__init__(root=root, split=self.split, 
-                                transform=transform, target_transform=target_transform, download=download)
-        self.dataidxs = dataidxs
-        self.train = train
+#         self.split = 'train' if train else 'test'
+#         super(ChestMINIST_truncated,self).__init__(root=root, split=self.split, 
+#                                 transform=transform, target_transform=target_transform, download=download)
+#         self.dataidxs = dataidxs
+#         self.train = train
 
-        if self.dataidxs is not None:
-            self.imgs = self.imgs[self.dataidxs]
-            self.labels = self.labels[self.dataidxs]
+#         if self.dataidxs is not None:
+#             self.imgs = self.imgs[self.dataidxs]
+#             self.labels = self.labels[self.dataidxs]
 
-        self.data = self.imgs
-        self.target = self.labels
+#         self.data = self.imgs
+#         self.target = self.labels
 
-    def truncate_channel(self, index):
-        for i in range(index.shape[0]):
-            gs_index = index[i]
-            self.imgs[gs_index, :, :, 1] = 0.0
-            self.imgs[gs_index, :, :, 2] = 0.0
+#     def truncate_channel(self, index):
+#         for i in range(index.shape[0]):
+#             gs_index = index[i]
+#             self.imgs[gs_index, :, :, 1] = 0.0
+#             self.imgs[gs_index, :, :, 2] = 0.0
 
-    def __getitem__(self, index):
-        """
-        Args:
-            index (int): Index
+#     def __getitem__(self, index):
+#         """
+#         Args:
+#             index (int): Index
 
-        Returns:
-            tuple: (image, target) where target is index of the target class.
-        """
-        img, target = self.imgs[index], self.labels[index]
+#         Returns:
+#             tuple: (image, target) where target is index of the target class.
+#         """
+#         img, target = self.imgs[index], self.labels[index]
 
-        if self.transform is not None:
-            img = self.transform(img)
+#         if self.transform is not None:
+#             img = self.transform(img)
 
-        if self.target_transform is not None:
-            target = self.target_transform(target)
+#         if self.target_transform is not None:
+#             target = self.target_transform(target)
 
-        return img, target
+#         return img, target
+
+#     def __len__(self):
+#         return len(self.imgs)        
+
+class ChestXray14(VisionDataset):
+    
+    def __init__(self, root: str, train=True, transforms: Optional[Callable] = None, transform: Optional[Callable] = None, target_transform: Optional[Callable] = None):
+        
+        super().__init__(root, transforms, transform, target_transform)
+        # Get splits
+        split_path = os.path.join(root, 'train_val_list.txt') if train else os.path.join(root, 'test_list.txt')
+        with open(split_path) as f:
+            splits = f.readlines()
+        splits = [s.strip('\n') for s in splits]
+        self.splits = splits
+
+        # Get annos
+        csv_path = os.path.join(root, "Data_Entry_2017.csv")
+        annos = pd.read_csv(csv_path).set_index('Image Index')
+
+        # add file path
+        annos['folder'] = [os.path.join(root, self._idx_to_folder(i)) for i in range(len(annos))]
+
+
+        self.annos = annos['Finding Labels'][splits].reset_index().values.tolist()
+        self.path = annos['folder'][splits].reset_index().values.tolist()
+
+        for info in self.annos:
+            info[-1] = info[-1].partition('|')[0]
+        # for k,v in self.annos.items(): self.annos[k] = v.partition('|')[0]
+
+        split_path = os.path.join(root, 'train_val_list.txt') if train else os.path.join(root, 'test_list.txt')
+        with open(split_path) as f:
+            splits = f.readlines()
+
+        self.loader = default_loader
+
+        self.classes = set([label for _, label in self.annos])
+        self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
+
+
+
+    def _idx_to_folder(self,idx):
+        nums = [4999] + [10000]*10 + [7121]
+
+        base = os.path.join('images_%03d','images')
+        for i in range(1,len(nums)+1):
+            ceiling =  sum(nums[:i])
+            if idx < ceiling:
+                return base % i
+
+    def __getitem__(self, index: int):
+        file_name, label = self.annos[index]
+        name, path = self.path[index]
+
+        assert file_name == name, "Data loaded incorrectly!"
+
+        file_path = os.path.join(path,name)
+
+        sample = self.loader(file_path)
+        label = self.class_to_idx[label]
+
+        if self.transform:
+            sample = self.transform(sample)
+        if self.target_transform:
+            label = self.target_transform
+
+        return sample, label
+
+
 
     def __len__(self):
-        return len(self.imgs)        
+        return len(self.annos)
+
 
 
 class CIFAR_truncated(data.Dataset):

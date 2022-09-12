@@ -119,7 +119,8 @@ class Base_Server():
     def __init__(self,server_dict, args):
         self.train_data = server_dict['train_data']
         self.test_data = server_dict['test_data']
-        self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
+        # self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
+        self.device = 'cpu'
         if 'model_type' in server_dict:
             self.model_type = server_dict['model_type']
         elif 'model' in server_dict:

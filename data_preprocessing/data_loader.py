@@ -6,7 +6,7 @@ import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
 
-from data_preprocessing.datasets import CIFAR_truncated, ImageFolder_custom, ImageFolderTruncated, CifarReduced, ChestMINIST_truncated
+from data_preprocessing.datasets import CIFAR_truncated, ImageFolder_custom, ImageFolderTruncated, CifarReduced, ChestMINIST_truncated, ChestXray14
 from PIL import Image
 
 from typing import Callable
@@ -210,13 +210,44 @@ def _data_transforms_prompt(datadir):
 
     return train_transform, valid_transform
 
-def _data_transforms_chestminist(datadir):
+def _data_transforms_chestminist(datadir, img_size=28):
 
     train_transform = valid_transform = transforms.Compose([
+    transforms.Resize(img_size),
+    transforms.RandomCrop(img_size, padding=4),
+    transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     transforms.Normalize(mean=[.5], std=[.5])
     ])
    
+    return train_transform, valid_transform
+
+def _data_transforms_cifar(datadir,img_size=1024):
+    if "cifar100" or "cifar-100"  in datadir:
+        CIFAR_MEAN = [0.5071, 0.4865, 0.4409]
+        CIFAR_STD = [0.2673, 0.2564, 0.2762]
+    else:
+        CIFAR_MEAN = [0.49139968, 0.48215827, 0.44653124]
+        CIFAR_STD = [0.24703233, 0.24348505, 0.26158768]
+
+    train_transform = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Resize(img_size),
+        transforms.RandomCrop(img_size, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
+    ])
+
+    # train_transform.transforms.append(Cutout(16))
+
+    valid_transform = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Resize(img_size),
+        transforms.ToTensor(),
+        transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
+    ])
+
     return train_transform, valid_transform
 
 
@@ -234,7 +265,7 @@ def load_data(datadir, sample_num=-1):
     elif 'CropDisease' in datadir:
         train_transform, test_transform = _data_transforms_prompt(datadir)
         dl_obj = ImageFolder_custom
-    elif 'chestminist' in datadir:
+    elif 'chestmnist' in datadir:
         train_transform, test_transform = _data_transforms_chestminist(datadir)
         dl_obj = ChestMINIST_truncated
     else:
@@ -314,8 +345,8 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
         dl_obj = ImageFolder_custom
         workers=16
         persist=False
-    elif 'chestminist' in datadir:
-        train_transform, test_transform = _data_transforms_chestminist(datadir)
+    elif 'chestmnist' in datadir:
+        train_transform, test_transform = _data_transforms_chestminist(datadir, img_size)
         dl_obj = ChestMINIST_truncated
         workers=8
         persist=True
