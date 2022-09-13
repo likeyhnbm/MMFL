@@ -7,6 +7,7 @@ from PIL import Image
 from torchvision.datasets import CIFAR10
 from torchvision.datasets import CIFAR100
 from torchvision.datasets import DatasetFolder, ImageFolder, VisionDataset
+from torchvision import transforms
 import os
 import pandas as pd
 # from medmnist import ChestMNIST
@@ -89,11 +90,66 @@ class ChestMINIST_truncated:
 #     def __len__(self):
 #         return len(self.imgs)        
 
+class ChestXray14_Fast(VisionDataset):
+    
+    def __init__(self, _data, target, path, dataidxs, transform, target_transform, classes,class_to_idx):
+        
+        self.path = path
+
+        self.loader = default_loader
+
+        self.classes = classes
+        self.class_to_idx = class_to_idx
+
+        self.data = _data
+        self.target = target
+
+        self.dataidxs = dataidxs
+
+        self.transform = transform
+        self.target_transform = target_transform
+
+        if self.dataidxs is not None:
+            self.data = self.data[self.dataidxs]
+            self.target = self.target[self.dataidxs]
+            self.path = self.path[self.dataidxs]
+
+        if self.transform is None:
+            self.transform = transforms.Compose([
+                transforms.ToTensor(),
+                ])
+
+    def __getitem__(self, index: int):
+        file_name = self.data[index]
+        label = self.target[index]
+        name, path = self.path[index]
+
+        assert file_name == name, "Data loaded incorrectly!"
+
+        file_path = os.path.join(path,name)
+
+        sample = self.loader(file_path)
+
+        if self.transform:
+            sample = self.transform(sample)
+        if self.target_transform:
+            label = self.target_transform
+
+        return sample, label
+
+
+
+    def __len__(self):
+        return len(self.data)
+
+
+
+
 class ChestXray14(VisionDataset):
     
-    def __init__(self, root: str, train=True, transforms: Optional[Callable] = None, transform: Optional[Callable] = None, target_transform: Optional[Callable] = None, dataidxs=None, download=True):
+    def __init__(self, root: str, train=True, transform: Optional[Callable] = None, target_transform: Optional[Callable] = None, dataidxs=None, download=True):
         
-        super().__init__(root, transforms, transform, target_transform)
+        super().__init__(root, None, transform, target_transform)
         self.dataidxs = dataidxs
         # Get splits
         split_path = os.path.join(root, 'train_val_list.txt') if train else os.path.join(root, 'test_list.txt')
@@ -116,11 +172,6 @@ class ChestXray14(VisionDataset):
 
         for info in self.annos:
             info[-1] = info[-1].partition('|')[0]
-        # for k,v in self.annos.items(): self.annos[k] = v.partition('|')[0]
-
-        split_path = os.path.join(root, 'train_val_list.txt') if train else os.path.join(root, 'test_list.txt')
-        with open(split_path) as f:
-            splits = f.readlines()
 
         self.loader = default_loader
 
@@ -174,8 +225,9 @@ class ChestXray14(VisionDataset):
     def __len__(self):
         return len(self.data)
 
+    def get_fast_dataset(self, dataidxs):
 
-
+        return ChestXray14_Fast(self.data,self.target,self.path, dataidxs, self.transform, self.target_transform, self.classes, self.class_to_idx)
 
 
 class CIFAR_truncated(data.Dataset):

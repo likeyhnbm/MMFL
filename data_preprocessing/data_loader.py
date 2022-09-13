@@ -379,6 +379,32 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
 
     return train_dl, test_dl
 
+def get_dataloader_fast(datadir, train_bs, test_bs, base_train, dataidxs=None, img_size=224, sample_num=-1):
+
+    if 'chestxray' in datadir:
+        train_transform, test_transform = _data_transforms_cheestxray(datadir, img_size)
+        dl_obj_train = base_train.get_fast_dataset
+        dl_obj_test = ChestXray14
+        workers=8
+        persist=True 
+    else:
+        raise NotImplementedError("fast load is not supported.")
+
+
+    if sample_num>-1:
+        train_ds = dl_obj_train(sample_num, dataidxs=dataidxs)
+        test_ds = dl_obj_test(datadir, sample_num, train=False, transform=test_transform, download=True)
+        train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
+        test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
+    else:
+        train_ds = dl_obj_train(dataidxs=dataidxs)
+        test_ds = dl_obj_test(datadir, train=False, transform=test_transform, download=True)
+    
+        train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
+        test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
+
+    return train_dl, test_dl
+
 def load_partition_data(data_dir, partition_method, partition_alpha, client_number, batch_size, img_size=224, sample_num=-1):
     class_num, net_dataidx_map, traindata_cls_counts = partition_data(data_dir, partition_method, client_number, partition_alpha, sample_num=sample_num)
 
@@ -395,6 +421,10 @@ def load_partition_data(data_dir, partition_method, partition_alpha, client_numb
     train_data_local_dict = dict()
     test_data_local_dict = dict()
 
+    if 'chestxray' in data_dir:
+        train_transform, _ = _data_transforms_cheestxray(data_dir, img_size)
+        base_train = ChestXray14(data_dir, dataidxs=None, train=True, transform=train_transform, download=True)
+
     for client_idx in range(client_number):
         dataidxs = net_dataidx_map[client_idx]
         local_data_num = len(dataidxs)
@@ -402,7 +432,10 @@ def load_partition_data(data_dir, partition_method, partition_alpha, client_numb
         logging.info("client_idx = %d, local_sample_number = %d" % (client_idx, local_data_num))
 
         # training batch size = 64; algorithms batch size = 32
-        train_data_local, test_data_local = get_dataloader(data_dir, batch_size, batch_size, dataidxs,img_size, sample_num=sample_num)
+        if 'chestxray' in data_dir:
+            train_data_local, test_data_local = get_dataloader_fast(data_dir, batch_size, batch_size,base_train, dataidxs,img_size, sample_num=sample_num)
+        else:
+            train_data_local, test_data_local = get_dataloader(data_dir, batch_size, batch_size, dataidxs,img_size, sample_num=sample_num)
         logging.info("client_idx = %d, batch_num_train_local = %d, batch_num_test_local = %d" % (
             client_idx, len(train_data_local), len(test_data_local)))
         train_data_local_dict[client_idx] = train_data_local
