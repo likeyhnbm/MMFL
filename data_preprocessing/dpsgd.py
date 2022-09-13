@@ -7,15 +7,9 @@ import torch
 from torch.optim.optimizer import Optimizer, required
 
 import torch.nn.functional as F
-PI= torch.cuda.FloatTensor([math.pi])
-NORM = (torch.sqrt(2.0*PI))
-def norm_pdf(x,mean,std):
-    y= (x-mean)/std
-    return (torch.exp( -(y).pow(2)/2.0)/NORM)/std
-
 
 class DPSGD(Optimizer):
-    
+
 
     def __init__(self, params, lr=required, momentum=0, dampening=0,
                  weight_decay=0, nesterov=False,C=1,noise_multiplier= 1.0 , batch_size=256):
@@ -43,7 +37,7 @@ class DPSGD(Optimizer):
         self.noise_multiplier = noise_multiplier
         
     def __setstate__(self, state):
-        super(SGD, self).__setstate__(state)
+        super(DPSGD, self).__setstate__(state)
         for group in self.param_groups:
             group.setdefault('nesterov', False)
 
