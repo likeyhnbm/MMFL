@@ -384,7 +384,7 @@ def get_dataloader_fast(datadir, train_bs, test_bs, base_train, base_test, datai
     if 'chestxray' in datadir:
         dl_obj_train = base_train.get_fast_dataset
         dl_obj_test = base_test
-        workers=8
+        workers=4
         persist=True 
     else:
         raise NotImplementedError("fast load is not supported.")
