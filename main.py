@@ -117,10 +117,13 @@ def add_args(parser):
                     help='selection of optimizer')            
     parser.add_argument('--stat', action='store_true', default=False,
                     help='show the state of model')  
+    parser.add_argument('--dp', action='store_true', default=False,
+                help='Apply differential privacy')  
     parser.add_argument('--freeze_all', action='store_true', default=False,
                     help='freeze the entire model') 
     parser.add_argument('--sam_mode', type=str, default='none', choices= ['asam', 'sam', 'none'], metavar='N',
                         help='type of sam')
+
     parser.add_argument('--sample_num', type=int, default=-1, metavar='N',
                         help='how many sample will be trained in total. -1 for no reduce')
 
