@@ -4,7 +4,7 @@ import logging
 from methods.base import Base_Client, Base_Server
 from torch.multiprocessing import current_process
 from data_preprocessing.sam import SAM
-from data_preprocessing.dpsgd import DPSGD
+# from data_preprocessing.dpsgd import DPSGD
 
 
 
@@ -27,7 +27,8 @@ class Client(Base_Client):
 
         params = filter(lambda p: p.requires_grad,self.model.parameters())
         if args.dp:
-            self.optimizer = DPSGD(params, lr=self.args.lr, momentum=0.9, weight_decay=self.args.wd, nesterov=True)
+            # self.optimizer = DPSGD(params, lr=self.args.lr, momentum=0.9, weight_decay=self.args.wd, nesterov=True)
+            pass
         else:
             if args.optimizer == 'sgd':
 
