@@ -124,7 +124,7 @@ class ChestXray14(VisionDataset):
 
         self.loader = default_loader
 
-        self.classes = set([label for _, label in self.annos])
+        self.classes = sorted(set([label for _, label in self.annos]))
         self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
 
         self.data = np.array([file_name for file_name, label in self.annos])
