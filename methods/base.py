@@ -169,6 +169,7 @@ class Base_Server():
         return [self.model.cpu().state_dict() for x in range(self.args.thread_number)]
 
     def test(self):
+        self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
         self.model.to(self.device)
         self.model.eval()
 
@@ -195,4 +196,6 @@ class Base_Server():
                 cnt+=1
             acc = (test_correct / test_sample_number)*100
             logging.info("************* Server Acc = {:.2f} **************".format(acc))
+        
+        self.device = 'cpu'
         return acc
