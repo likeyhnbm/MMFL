@@ -311,6 +311,9 @@ def partition_data(datadir, partition, n_nets, alpha, sample_num=-1):
                 idx_k = np.where(y_train == k)[0]
                 np.random.shuffle(idx_k)
                 proportions = np.random.dirichlet(np.repeat(alpha, n_nets))
+                # while not proportions.all() > 0:
+                #     proportions = np.random.dirichlet(np.repeat(alpha, n_nets))
+
                 ## Balance
                 proportions = np.array([p * (len(idx_j) < N / n_nets) for p, idx_j in zip(proportions, idx_batch)])
                 proportions = proportions / proportions.sum()
@@ -371,8 +374,8 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
         train_ds = dl_obj(datadir, dataidxs=dataidxs, train=True, transform=train_transform, download=True)
         test_ds = dl_obj(datadir, train=False, transform=test_transform, download=True)
     
-        train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=True, num_workers=workers, persistent_workers=persist)
-        test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=True, num_workers=workers, persistent_workers=persist)
+        train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
+        test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
 
     return train_dl, test_dl
 
