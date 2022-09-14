@@ -15,15 +15,11 @@ class Client(Base_Client):
 
         params = filter(lambda p: p.requires_grad,self.model.parameters())
 
-        if args.dp:
-            # self.optimizer = DPSGD(params, lr=self.args.lr, momentum=0.9, weight_decay=self.args.wd, nesterov=True)
-            pass
-        
-        else: 
-            if args.optimizer == 'sgd':
-                self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.args.lr, momentum=0.9, weight_decay=self.args.wd, nesterov=True)
-            elif args.optimizer == 'adamw':
-                self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.args.lr, weight_decay=self.args.wd)
+
+        if args.optimizer == 'sgd':
+            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.args.lr, momentum=0.9, weight_decay=self.args.wd, nesterov=True)
+        elif args.optimizer == 'adamw':
+            self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.args.lr, weight_decay=self.args.wd)
 class Server(Base_Server):
     def __init__(self,server_dict, args):
         super().__init__(server_dict, args)
