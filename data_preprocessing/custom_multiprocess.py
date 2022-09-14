@@ -6,7 +6,7 @@ import multiprocessing.pool
 import time
 
 from random import randint
-
+from typing import Callable, Iterable, Any
 
 class NoDaemonProcess(multiprocessing.Process):
     # make 'daemon' attribute always return False
@@ -18,13 +18,18 @@ class NoDaemonProcess(multiprocessing.Process):
 
 # We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
 # because the latter is only a wrapper function, not a proper class.
-class MyPool(multiprocessing.pool.Pool):
-    Process = NoDaemonProcess
+# class MyPool(multiprocessing.pool.Pool):
+#     Process = NoDaemonProcess
 
 # NOTE: For CUDA 11, use this definition in MyPool instead
-# class MyPool(multiprocessing.pool.Pool):
-#     def Process(self, *args, **kwds):
-#         proc = super(MyPool, self).Process(*args, **kwds)
-#         proc.__class__ = NoDaemonProcess
+class MyPool(multiprocessing.pool.Pool):
 
-#         return proc
+    def __init__(self, processes=None, initializer=None, initargs=(),
+                 maxtasksperchild=None, context=None):
+        super().__init__(processes,initializer,initargs,maxtasksperchild,context)
+
+    def Process(self, *args, **kwds):
+        proc = super(MyPool, self).Process(*args, **kwds)
+        proc.__class__ = NoDaemonProcess
+
+        return proc

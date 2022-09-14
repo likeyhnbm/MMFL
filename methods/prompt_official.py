@@ -4,8 +4,7 @@ import logging
 from methods.base import Base_Client, Base_Server
 from torch.multiprocessing import current_process
 from data_preprocessing.sam import SAM
-from data_preprocessing.dpsgd import DPSGD
-
+from opacus.validators import ModuleValidator
 
 
 class Client(Base_Client):
@@ -22,30 +21,33 @@ class Client(Base_Client):
                                         projection = args.vpt_projection,
                                         prompt_drop_rate= args.vpt_drop,
                                     ).to(self.device)
+        if args.dp:
+            ModuleValidator.validate(self.model)
+            self.model = ModuleValidator.fix(self.model)
         self.criterion = torch.nn.CrossEntropyLoss().to(self.device)
 
 
-        params = filter(lambda p: p.requires_grad,self.model.parameters())
-        if args.dp:
-            self.optimizer = DPSGD(params, lr=self.args.lr, momentum=0.9, weight_decay=self.args.wd, nesterov=True)
-        else:
-            if args.optimizer == 'sgd':
+        # params = filter(lambda p: p.requires_grad,self.model.parameters())
+        params = self.model.parameters()
 
-                    base_optimizer = torch.optim.SGD
-                    kwargs = dict(lr=self.args.lr, momentum=0.9, weight_decay=self.args.wd, nesterov=True)
+        if args.optimizer == 'sgd':
 
-            elif args.optimizer == 'adamw':
-                base_optimizer = torch.optim.AdamW
-                kwargs = dict(lr=self.args.lr, weight_decay=self.args.wd)
+                base_optimizer = torch.optim.SGD
+                kwargs = dict(lr=self.args.lr, momentum=0.9, weight_decay=self.args.wd, nesterov=True)
 
-            
-            if args.sam_mode == 'none':
-                self.optimizer = base_optimizer(params, **kwargs)
-            elif args.sam_mode == 'asam':
-                self.optimizer = SAM(params, base_optimizer, rho=self.args.rho, adaptive=True, **kwargs)
-            elif args.sam_mode == 'sam':
-                self.optimizer = SAM(params, base_optimizer, rho=self.args.rho, adaptive=False, **kwargs)
-            
+        elif args.optimizer == 'adamw':
+            base_optimizer = torch.optim.AdamW
+            kwargs = dict(lr=self.args.lr, weight_decay=self.args.wd)
+
+        
+        if args.sam_mode == 'none':
+            self.optimizer = base_optimizer(params, **kwargs)
+        elif args.sam_mode == 'asam':
+            self.optimizer = SAM(params, base_optimizer, rho=self.args.rho, adaptive=True, **kwargs)
+        elif args.sam_mode == 'sam':
+            self.optimizer = SAM(params, base_optimizer, rho=self.args.rho, adaptive=False, **kwargs)
+
+
 
 
 

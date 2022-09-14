@@ -119,6 +119,10 @@ def add_args(parser):
                     help='show the state of model')  
     parser.add_argument('--dp', action='store_true', default=False,
                 help='Apply differential privacy')  
+    parser.add_argument('--delta', default=1e-3, type=float,
+                    help='hyperparameter delta for DP')
+    parser.add_argument('--epsilon', default=5, type=float,
+                    help='hyperparameter epsilon for DP')
     parser.add_argument('--freeze_all', action='store_true', default=False,
                     help='freeze the entire model') 
     parser.add_argument('--sam_mode', type=str, default='none', choices= ['asam', 'sam', 'none'], metavar='N',

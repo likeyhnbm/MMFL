@@ -2,9 +2,12 @@ import torch
 import wandb
 import logging
 from torch.multiprocessing import current_process
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 # import writer
-
+from opacus import PrivacyEngine
+from opacus.validators import ModuleValidator
+from opacus.utils.batch_memory_manager import BatchMemoryManager
+from opacus.accountants.utils import get_noise_multiplier
 
 
 class Base_Client():
@@ -46,7 +49,33 @@ class Base_Client():
                 self.train_dataloader._iterator = self.train_dataloader._get_iterator()
             self.client_index = client_idx
             num_samples = len(self.train_dataloader)*self.args.batch_size
-            weights = self.train()
+
+            if self.args.dp:
+                self.privacy_engine = PrivacyEngine()
+                sample_rate = 1 / len(self.train_dataloader)
+                noise_multiplier=get_noise_multiplier(
+                            target_epsilon=self.args.epsilon,
+                            target_delta=self.args.delta,
+                            sample_rate=sample_rate,
+                            epochs=self.args.epochs,
+                            accountant=self.privacy_engine.accountant.mechanism(),
+                        )
+                
+                model, optimizer, train_dataloader = self.privacy_engine.make_private(
+                    module=self.model,
+                    optimizer=self.optimizer,
+                    data_loader=self.train_dataloader,
+                    noise_multiplier=noise_multiplier,
+                    poisson_sampling=False,
+                    max_grad_norm=1.0,
+                    grad_sample_mode='functorch'
+                )
+
+                _, self.optimizer, self.train_dataloader = model, optimizer, train_dataloader
+                if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None and self.train_dataloader._iterator._shutdown:
+                    self.train_dataloader._iterator = self.train_dataloader._get_iterator()               
+
+            weights = self.train() if not self.args.dp else self.dp_train()
             acc = self.test()
             client_results.append({'weights':weights, 'num_samples':num_samples,'acc':acc, 'client_index':self.client_index})
             if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None:
@@ -84,6 +113,46 @@ class Base_Client():
                 # self.writer.add_scalar('Loss/client_{}/train'.format(self.client_index), sum(batch_loss) / len(batch_loss), epoch)
                 logging.info('(client {}. Local Training Epoch: {} \tLoss: {:.6f}  Thread {}  Map {}'.format(self.client_index,
                                                                             epoch, sum(epoch_loss) / len(epoch_loss), current_process()._identity[0], self.client_map[self.round]))
+        weights = self.model.cpu().state_dict()
+        return weights
+
+    def dp_train(self):
+        # train the local model
+        self.model.to(self.device)
+        self.model.train()
+        # _writer = glo.get_value("writer")
+        epoch_loss = []
+        for epoch in range(self.args.epochs):
+            with BatchMemoryManager(
+                                        data_loader=self.train_dataloader, 
+                                        max_physical_batch_size=self.args.batch_size, 
+                                        optimizer=self.optimizer
+                                    ) as memory_safe_data_loader:
+                batch_loss = []
+                cnt = 0 
+                for batch_idx, (images, labels) in enumerate(self.train_dataloader):
+                    # logging.info(images.shape)
+                    if self.args.debug and cnt>5:
+                        break
+                    images, labels = images.to(self.device), labels.to(self.device)
+                    self.optimizer.zero_grad()
+                    log_probs = self.model(images)
+                    loss = self.criterion(log_probs, labels)
+                    loss.backward()
+                    self.optimizer.step()
+                    batch_loss.append(loss.item())
+                    cnt+=1
+                    # logging.info('(client {} cnt {}'.format(self.client_index,cnt))
+                if len(batch_loss) > 0:
+                    epoch_loss.append(sum(batch_loss) / len(batch_loss))
+                    # self.writer.add_scalar('Loss/client_{}/train'.format(self.client_index), sum(batch_loss) / len(batch_loss), epoch)
+                    logging.info('(client {}. Local Training Epoch: {} \tLoss: {:.6f}  Thread {}  Map {}'.format(self.client_index,
+                                                                                epoch, sum(epoch_loss) / len(epoch_loss), current_process()._identity[0], self.client_map[self.round]))
+                    if self.args.dp:
+                        delta = self.args.delta
+                        epsilon, best_alpha = self.privacy_engine.accountant.get_privacy_spent(delta=delta)
+                        logging.info(f"(ε = {epsilon:.2f}, δ = {delta}) for α = {best_alpha}")
+
         weights = self.model.cpu().state_dict()
         return weights
 

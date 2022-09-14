@@ -2,6 +2,7 @@
    Source: https://github.com/sagizty/VPT/blob/main/PromptModels/structure.py
 """
 
+from collections import OrderedDict
 from sqlite3 import adapt
 import torch
 import torch.nn as nn
@@ -90,12 +91,41 @@ class Adapter_ViT(nn.Module):
         return x
 
     def forward(self,x):
-        self.basic_model.eval()
+        # self.basic_model.eval()
         x = self.forward_features(x)
         x = self.basic_model.forward_head(x)
         return x
     
-    def state_dict(self):
+    def state_dict(self, *args, destination=None, prefix='', keep_vars=False):
+
+        # if len(args) > 0:
+        #     if destination is None:
+        #         destination = args[0]
+        #     if len(args) > 1 and prefix == '':
+        #         prefix = args[1]
+        #     if len(args) > 2 and keep_vars is False:
+        #         keep_vars = args[2]
+        #     # DeprecationWarning is ignored by default
+
+        # if destination is None:
+        #     destination = OrderedDict()
+        #     destination._metadata = OrderedDict()
+
+        # local_metadata = dict(version=self._version)
+        # if hasattr(destination, "_metadata"):
+        #     destination._metadata[prefix[:-1]] = local_metadata
+
+        # self._save_to_state_dict(destination, prefix, keep_vars)
+        # for name, module in self._modules.items():
+        #     if module is not None:
+        #         module.state_dict(destination=destination, prefix=prefix + name + '.', keep_vars=keep_vars)
+        # for hook in self._state_dict_hooks.values():
+        #     hook_result = hook(self, destination, prefix, local_metadata)
+        #     if hook_result is not None:
+        #         destination = hook_result
+
+        # return destination
+
 
         state_dict = {}
 
@@ -103,7 +133,7 @@ class Adapter_ViT(nn.Module):
             if p.requires_grad:
                 state_dict.update({k:p.data})
 
-        
+        destination = state_dict
         return state_dict
 
     def load_state_dict(self, state_dict, strict=False):
