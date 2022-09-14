@@ -123,6 +123,8 @@ def add_args(parser):
                     help='hyperparameter delta for DP')
     parser.add_argument('--epsilon', default=5, type=float,
                     help='hyperparameter epsilon for DP')
+    parser.add_argument('--max_grad_norm', default=1, type=float,
+                    help='hyperparameter grad_norm for DP')
     parser.add_argument('--freeze_all', action='store_true', default=False,
                     help='freeze the entire model') 
     parser.add_argument('--sam_mode', type=str, default='none', choices= ['asam', 'sam', 'none'], metavar='N',

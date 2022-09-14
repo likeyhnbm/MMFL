@@ -4,7 +4,7 @@ import logging
 from methods.base import Base_Client, Base_Server
 from torch.multiprocessing import current_process
 from data_preprocessing.sam import SAM
-from opacus.validators import ModuleValidator
+# from opacus.validators import ModuleValidator
 
 
 class Client(Base_Client):
@@ -21,9 +21,7 @@ class Client(Base_Client):
                                         projection = args.vpt_projection,
                                         prompt_drop_rate= args.vpt_drop,
                                     ).to(self.device)
-        if args.dp:
-            ModuleValidator.validate(self.model)
-            self.model = ModuleValidator.fix(self.model)
+
         self.criterion = torch.nn.CrossEntropyLoss().to(self.device)
 
 
