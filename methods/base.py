@@ -104,7 +104,8 @@ class Base_Client():
                 if self.args.dp:
                     for param in self.model.parameters():
                         if param.requires_grad:
-                            param = param + self.args.lr * torch.normal(mean=0, std=self.noise_multiplier, size=param.size()).to(self.device)
+                            with torch.no_grad():
+                                param = param + self.args.lr * torch.normal(mean=0, std=self.noise_multiplier, size=param.size()).to(self.device)
 
                 batch_loss.append(loss.item())
                 cnt+=1
