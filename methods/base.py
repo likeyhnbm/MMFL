@@ -104,7 +104,8 @@ class Base_Client():
                 if self.args.dp:
                     for param in self.model.parameters():
                         if param.requires_grad:
-                            param = param + self.args.lr * torch.normal(mean=0, std=self.noise_multiplier, size=param.size()).to(self.device)
+                            with torch.no_grad():
+                                param = param + self.args.lr * torch.normal(mean=0, std=self.noise_multiplier, size=param.size()).to(self.device)
 
                 batch_loss.append(loss.item())
                 cnt+=1
@@ -255,11 +256,19 @@ class Base_Server():
 
     def run(self, received_info):
         server_outputs = self.operations(received_info)
-        acc = self.test()
+        try:
+            self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
+            acc = self.test()
+            self.device = 'cpu'
+        except:
+            self.device = 'cpu'
+            acc = self.test()
+            
         self.log_info(received_info, acc)
         self.round += 1
         if acc > self.acc:
-            torch.save(self.model.state_dict(), '{}/{}.pt'.format(self.save_path, 'server'))
+            if self.args.save_model:
+                torch.save(self.model.state_dict(), '{}/{}.pt'.format(self.save_path, 'server'))
             self.acc = acc
         return server_outputs
     
@@ -291,7 +300,8 @@ class Base_Server():
         return [self.model.cpu().state_dict() for x in range(self.args.thread_number)]
 
     def test(self):
-        self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
+        # self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
+        # self.device = 'cuda:0'
         self.model.to(self.device)
         self.model.eval()
 
@@ -319,5 +329,5 @@ class Base_Server():
             acc = (test_correct / test_sample_number)*100
             logging.info("************* Server Acc = {:.2f} **************".format(acc))
         
-        self.device = 'cpu'
+        # self.device = 'cpu'
         return acc
