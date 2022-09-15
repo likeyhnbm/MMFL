@@ -68,6 +68,9 @@ class Base_Client():
 
             weights = self.train() #if not self.args.dp else self.dp_train()
             acc = self.test()
+            self.model.to('cpu')
+            with torch.cuda.device(self.device):
+                torch.cuda.empty_cache()
             client_results.append({'weights':weights, 'num_samples':num_samples,'acc':acc, 'client_index':self.client_index})
             if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None:
                 self.train_dataloader._iterator._shutdown_workers()
@@ -102,10 +105,10 @@ class Base_Client():
                             clip_grad_norm_(param.grad, max_norm=self.args.max_grad_norm)
                 self.optimizer.step()
                 if self.args.dp:
-                    for param in self.model.parameters():
+                    for k, param in self.model.named_parameters():
                         if param.requires_grad:
                             with torch.no_grad():
-                                param = param + self.args.lr * torch.normal(mean=0, std=self.noise_multiplier, size=param.size()).to(self.device)
+                                eval('self.model.'+k).set_(param + self.args.lr * torch.normal(mean=0, std=self.noise_multiplier, size=param.size()).to(self.device))
 
                 batch_loss.append(loss.item())
                 cnt+=1
@@ -257,10 +260,15 @@ class Base_Server():
     def run(self, received_info):
         server_outputs = self.operations(received_info)
         try:
-            self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
+            # self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
+            self.device = 'cuda:0'
             acc = self.test()
+            self.model.to('cpu')
             self.device = 'cpu'
+            # with torch.cuda.device('cuda:1'):
+            #     torch.cuda.empty_cache()
         except:
+            logging.info("Now using cpu for Server.")
             self.device = 'cpu'
             acc = self.test()
             
