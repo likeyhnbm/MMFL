@@ -5,11 +5,21 @@ from torch.multiprocessing import current_process
 from torch.nn.utils import clip_grad_norm_
 # from torch.utils.tensorboard import SummaryWriter
 # import writer
-from opacus import PrivacyEngine
-from opacus.validators import ModuleValidator
-from opacus.utils.batch_memory_manager import BatchMemoryManager
-from opacus.accountants.utils import get_noise_multiplier
+import numpy as np
 
+
+def get_noise_multiplier(epsilon, delta, max_grad_norm):
+    """
+        grads: [N, d]
+    """
+
+
+    # # sensitivity
+    s = 2 * max_grad_norm
+
+    sigma = s * np.sqrt(2 * np.log(1.25/delta) / epsilon)
+
+    return sigma
 
 class Base_Client():
     def __init__(self, client_dict, args):
@@ -28,8 +38,7 @@ class Base_Client():
         self.train_dataloader = None
         self.test_dataloader = None
         self.client_index = None
-        if args.dp:
-            self.privacy_engine = PrivacyEngine(accountant='gdp')
+
         
     def set_server(self,server):
         self.server = server
@@ -54,14 +63,8 @@ class Base_Client():
             num_samples = len(self.train_dataloader)*self.args.batch_size
 
             if self.args.dp:
-                sample_rate = 1 / len(self.train_dataloader)
-                self.noise_multiplier=get_noise_multiplier(
-                            target_epsilon=self.args.epsilon,
-                            target_delta=self.args.delta,
-                            sample_rate=sample_rate,
-                            epochs=self.args.epochs,
-                            accountant=self.privacy_engine.accountant.mechanism(),
-                        )    
+                self.noise_multiplier = get_noise_multiplier(self.args.epsilon, self.args.delta, self.args.max_grad_norm)
+                # logging.info('noise_multiplier:{}'.format(self.noise_multiplier))
 
             weights = self.train() #if not self.args.dp else self.dp_train()
             acc = self.test()
@@ -92,6 +95,7 @@ class Base_Client():
                 log_probs = self.model(images)
                 loss = self.criterion(log_probs, labels)
                 loss.backward()
+
                 if self.args.dp:
                     for param in self.model.parameters():
                         if param.requires_grad:
@@ -100,7 +104,7 @@ class Base_Client():
                 if self.args.dp:
                     for param in self.model.parameters():
                         if param.requires_grad:
-                            param = param + torch.normal(mean=0, std=self.noise_multiplier * self.args.max_grad_norm, size=param.size()).to(self.device)
+                            param = param + self.args.lr * torch.normal(mean=0, std=self.noise_multiplier, size=param.size()).to(self.device)
 
                 batch_loss.append(loss.item())
                 cnt+=1
