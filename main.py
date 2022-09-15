@@ -355,5 +355,6 @@ if __name__ == "__main__":
             logging.info(out_str)
             with open('{}/out.log'.format(args.save_path), 'a+') as out_file:
                 out_file.write(out_str)
+            # time.sleep(10)
         pool.close()
         pool.join()
