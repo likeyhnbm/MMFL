@@ -68,6 +68,8 @@ class Base_Client():
 
             weights = self.train() #if not self.args.dp else self.dp_train()
             acc = self.test()
+            self.model.to('cpu')
+            torch.cuda.empty_cache()
             client_results.append({'weights':weights, 'num_samples':num_samples,'acc':acc, 'client_index':self.client_index})
             if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None:
                 self.train_dataloader._iterator._shutdown_workers()
@@ -261,6 +263,7 @@ class Base_Server():
             acc = self.test()
             self.device = 'cpu'
         except:
+            logging.info("Now using cpu for Server.")
             self.device = 'cpu'
             acc = self.test()
             
