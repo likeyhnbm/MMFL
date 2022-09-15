@@ -5,11 +5,21 @@ from torch.multiprocessing import current_process
 from torch.nn.utils import clip_grad_norm_
 # from torch.utils.tensorboard import SummaryWriter
 # import writer
-from opacus import PrivacyEngine
-from opacus.validators import ModuleValidator
-from opacus.utils.batch_memory_manager import BatchMemoryManager
-from opacus.accountants.utils import get_noise_multiplier
+import numpy as np
 
+
+def get_noise_multiplier(epsilon, delta, max_grad_norm):
+    """
+        grads: [N, d]
+    """
+
+
+    # # sensitivity
+    s = 2 * max_grad_norm
+
+    sigma = s * np.sqrt(2 * np.log(1.25/delta) / epsilon)
+
+    return sigma
 
 class Base_Client():
     def __init__(self, client_dict, args):
@@ -28,8 +38,7 @@ class Base_Client():
         self.train_dataloader = None
         self.test_dataloader = None
         self.client_index = None
-        if args.dp:
-            self.privacy_engine = PrivacyEngine(accountant='gdp')
+
         
     def set_server(self,server):
         self.server = server
@@ -54,17 +63,13 @@ class Base_Client():
             num_samples = len(self.train_dataloader)*self.args.batch_size
 
             if self.args.dp:
-                sample_rate = 1 / len(self.train_dataloader)
-                self.noise_multiplier=get_noise_multiplier(
-                            target_epsilon=self.args.epsilon,
-                            target_delta=self.args.delta,
-                            sample_rate=sample_rate,
-                            epochs=self.args.epochs,
-                            accountant=self.privacy_engine.accountant.mechanism(),
-                        )    
+                self.noise_multiplier = get_noise_multiplier(self.args.epsilon, self.args.delta, self.args.max_grad_norm)
+                # logging.info('noise_multiplier:{}'.format(self.noise_multiplier))
 
             weights = self.train() #if not self.args.dp else self.dp_train()
             acc = self.test()
+            self.model.to('cpu')
+            torch.cuda.empty_cache()
             client_results.append({'weights':weights, 'num_samples':num_samples,'acc':acc, 'client_index':self.client_index})
             if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None:
                 self.train_dataloader._iterator._shutdown_workers()
@@ -92,6 +97,7 @@ class Base_Client():
                 log_probs = self.model(images)
                 loss = self.criterion(log_probs, labels)
                 loss.backward()
+
                 if self.args.dp:
                     for param in self.model.parameters():
                         if param.requires_grad:
@@ -100,7 +106,8 @@ class Base_Client():
                 if self.args.dp:
                     for param in self.model.parameters():
                         if param.requires_grad:
-                            param = param + torch.normal(mean=0, std=self.noise_multiplier * self.args.max_grad_norm, size=param.size()).to(self.device)
+                            with torch.no_grad():
+                                param = param + self.args.lr * torch.normal(mean=0, std=self.noise_multiplier, size=param.size()).to(self.device)
 
                 batch_loss.append(loss.item())
                 cnt+=1
@@ -251,11 +258,20 @@ class Base_Server():
 
     def run(self, received_info):
         server_outputs = self.operations(received_info)
-        acc = self.test()
+        try:
+            self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
+            acc = self.test()
+            self.device = 'cpu'
+        except:
+            logging.info("Now using cpu for Server.")
+            self.device = 'cpu'
+            acc = self.test()
+            
         self.log_info(received_info, acc)
         self.round += 1
         if acc > self.acc:
-            torch.save(self.model.state_dict(), '{}/{}.pt'.format(self.save_path, 'server'))
+            if self.args.save_model:
+                torch.save(self.model.state_dict(), '{}/{}.pt'.format(self.save_path, 'server'))
             self.acc = acc
         return server_outputs
     
@@ -287,7 +303,8 @@ class Base_Server():
         return [self.model.cpu().state_dict() for x in range(self.args.thread_number)]
 
     def test(self):
-        self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
+        # self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
+        # self.device = 'cuda:0'
         self.model.to(self.device)
         self.model.eval()
 
@@ -315,5 +332,5 @@ class Base_Server():
             acc = (test_correct / test_sample_number)*100
             logging.info("************* Server Acc = {:.2f} **************".format(acc))
         
-        self.device = 'cpu'
+        # self.device = 'cpu'
         return acc

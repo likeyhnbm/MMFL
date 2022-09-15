@@ -127,6 +127,9 @@ def add_args(parser):
                     help='hyperparameter grad_norm for DP')
     parser.add_argument('--freeze_all', action='store_true', default=False,
                     help='freeze the entire model') 
+    parser.add_argument('--save_model', action='store_true', default=False,
+                help='save the server model') 
+
     parser.add_argument('--sam_mode', type=str, default='none', choices= ['asam', 'sam', 'none'], metavar='N',
                         help='type of sam')
 
