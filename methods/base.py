@@ -107,8 +107,9 @@ class Base_Client():
                 if self.args.dp:
                     state_dict = {}
                     for k, param in self.model.named_parameters():
-                        with torch.no_grad():
-                            state_dict.update({k: param + self.args.lr * torch.normal(mean=0, std=self.noise_multiplier, size=param.size()).to(self.device)})
+                        if param.requires_grad:
+                            with torch.no_grad():
+                                state_dict.update({k: param + self.args.lr * torch.normal(mean=0, std=self.noise_multiplier, size=param.size()).to(self.device)})
 
                     self.model.load_state_dict(state_dict, strict=False)
 
