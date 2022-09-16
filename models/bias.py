@@ -25,7 +25,7 @@ class Bias_ViT(nn.Module):
 
         super(Bias_ViT, self).__init__()
 
-        self.model = timm.create_model(type,num_classes,True)
+        self.model = timm.create_model(type,num_classes=num_classes,pretrained=True)
 
         self._freeze()
 
