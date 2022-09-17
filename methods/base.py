@@ -103,8 +103,6 @@ class Base_Client():
                     for param in self.model.parameters():
                         if param.requires_grad:
                             clip_grad_norm_(param.grad, max_norm=self.args.max_grad_norm)
-                self.optimizer.step()
-                if self.args.dp:
                     state_dict = {}
                     for k, param in self.model.named_parameters():
                         if param.requires_grad:
@@ -112,6 +110,9 @@ class Base_Client():
                                 state_dict.update({k: param + self.args.lr * torch.normal(mean=0, std=self.noise_multiplier, size=param.size()).to(self.device)})
 
                     self.model.load_state_dict(state_dict, strict=False)
+                
+                self.optimizer.step()
+
 
                 batch_loss.append(loss.item())
                 cnt+=1
