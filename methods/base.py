@@ -269,8 +269,8 @@ class Base_Server():
             acc = self.test()
             self.model.to('cpu')
             self.device = 'cpu'
-            # with torch.cuda.device('cuda:1'):
-            #     torch.cuda.empty_cache()
+            with torch.cuda.device('cuda:1'):
+                torch.cuda.empty_cache()
         except:
             logging.info("Now using cpu for Server.")
             self.device = 'cpu'
