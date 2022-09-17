@@ -103,14 +103,16 @@ class Base_Client():
                     for param in self.model.parameters():
                         if param.requires_grad:
                             clip_grad_norm_(param.grad, max_norm=self.args.max_grad_norm)
-                self.optimizer.step()
-                if self.args.dp:
                     state_dict = {}
                     for k, param in self.model.named_parameters():
-                        with torch.no_grad():
-                            state_dict.update({k: param + self.args.lr * torch.normal(mean=0, std=self.noise_multiplier, size=param.size()).to(self.device)})
+                        if param.requires_grad:
+                            with torch.no_grad():
+                                state_dict.update({k: param + self.args.lr * torch.normal(mean=0, std=self.noise_multiplier, size=param.size()).to(self.device)})
 
                     self.model.load_state_dict(state_dict, strict=False)
+                
+                self.optimizer.step()
+
 
                 batch_loss.append(loss.item())
                 cnt+=1
@@ -267,8 +269,8 @@ class Base_Server():
             acc = self.test()
             self.model.to('cpu')
             self.device = 'cpu'
-            # with torch.cuda.device('cuda:1'):
-            #     torch.cuda.empty_cache()
+            with torch.cuda.device('cuda:1'):
+                torch.cuda.empty_cache()
         except:
             logging.info("Now using cpu for Server.")
             self.device = 'cpu'

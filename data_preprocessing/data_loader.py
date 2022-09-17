@@ -224,11 +224,11 @@ def _data_transforms_chestminist(datadir, img_size=28):
 
 def _data_transforms_cheestxray(datadir, img_size=1024):
     
-    train_mean = [0.485, 0.456, 0.406]
-    train_std = [0.229, 0.224, 0.225]
+    train_mean = [0.5057, 0.5057, 0.5057]
+    train_std = [0.2508, 0.2508, 0.2508]
 
-    test_mean = [-0.0692, -0.0692, -0.0692]
-    test_std = [0.4835, 0.4835, 0.4835]
+    test_mean = [0.4724, 0.4724, 0.4724]
+    test_std = [0.2370, 0.2370, 0.2370]
 
     train_transform = transforms.Compose([
         # transforms.ToPILImage(), # Must convert to PIL image for subsequent operations to run
@@ -240,7 +240,6 @@ def _data_transforms_cheestxray(datadir, img_size=1024):
     valid_transform = transforms.Compose([
         # transforms.ToPILImage(), # Must convert to PIL image for subsequent operations to run
         transforms.Resize(img_size),
-        transforms.RandomRotation(20), # Image augmentation
         transforms.ToTensor(), # Must convert to pytorch tensor for subsequent operations to run
         transforms.Normalize(test_mean, test_std),
     ])
@@ -286,7 +285,7 @@ def load_data(datadir, img_size=224, sample_num=-1):
 
 def partition_data(datadir, partition, n_nets, alpha, sample_num=-1):
     logging.info("*********partition data***************")
-    y_train, y_test = load_data(datadir, sample_num)
+    y_train, y_test = load_data(datadir, sample_num = sample_num)
     n_train = y_train.shape[0]
     n_test = y_test.shape[0]
     class_num = len(np.unique(y_train))
