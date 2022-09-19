@@ -426,3 +426,54 @@ class ImageFolderTruncated(DatasetFolder):
         if self.target_transform is not None:
             target = self.target_transform(target)
         return sample, target
+
+class EuroSAT(VisionDataset):
+    
+    def __init__(self, root: str, train=True, transform: Optional[Callable] = None, target_transform: Optional[Callable] = None, dataidxs=None, download=True):
+        
+        super().__init__(root, None, transform, target_transform)
+        self.dataidxs = dataidxs
+        # Get splits
+        annos_path = os.path.join(root, 'train.csv') if train else os.path.join(root, 'test.csv')
+
+        # Get annos
+        annos = pd.read_csv(annos_path)
+        self.classes = sorted(set(annos['ClassName']))
+        self.idx_to_class = {i: set(annos[annos['Label']==i][['Label','ClassName']]['ClassName']).pop() for i in range(len(self.classes))}
+
+        
+        self.loader = default_loader
+
+        self.data = np.array(annos['Filename'])
+        self.target = np.array(annos['Label'])
+
+
+
+        if self.dataidxs is not None:
+            self.data = self.data[self.dataidxs]
+            self.target = self.target[self.dataidxs]
+
+        if self.transform is None:
+            self.transform = transforms.Compose([
+                transforms.ToTensor(),
+                ])
+
+    def __getitem__(self, index: int):
+        file_name = self.data[index]
+        label = self.target[index]
+
+        file_path = os.path.join(self.root,file_name)
+
+        sample = self.loader(file_path)
+
+        if self.transform:
+            sample = self.transform(sample)
+        if self.target_transform:
+            label = self.target_transform(label)
+
+        return sample, label
+
+
+
+    def __len__(self):
+        return len(self.data)
