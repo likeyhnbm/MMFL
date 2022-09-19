@@ -173,6 +173,19 @@ class ChestXray14(VisionDataset):
         for info in self.annos:
             info[-1] = info[-1].partition('|')[0]
 
+        removed_annos = []
+        removed_path = []
+
+        for i, info in enumerate(self.annos):
+            info[-1] = info[-1].partition('|')[0]
+            if info[-1] != 'No Finding':
+                removed_annos.append(info)
+                removed_path.append(self.path[i])
+        
+        self.annos = removed_annos
+        self.path = removed_path
+
+
         self.loader = default_loader
 
         self.classes = sorted(set([label for _, label in self.annos]))

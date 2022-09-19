@@ -224,11 +224,11 @@ def _data_transforms_chestminist(datadir, img_size=28):
 
 def _data_transforms_cheestxray(datadir, img_size=1024):
     
-    train_mean = [0.5057, 0.5057, 0.5057]
-    train_std = [0.2508, 0.2508, 0.2508]
+    train_mean = [0.4976, 0.4976, 0.4976]
+    train_std = [0.2496, 0.2496, 0.2496]
 
-    test_mean = [0.4724, 0.4724, 0.4724]
-    test_std = [0.2370, 0.2370, 0.2370]
+    test_mean = [0.4715, 0.4715, 0.4715]
+    test_std = [0.2406, 0.2406, 0.2406]
 
     train_transform = transforms.Compose([
         # transforms.ToPILImage(), # Must convert to PIL image for subsequent operations to run
