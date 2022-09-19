@@ -168,8 +168,6 @@ class ChestXray14(VisionDataset):
         self.annos = annos['Finding Labels'][splits].reset_index().values.tolist()
         self.path = annos['folder'][splits].reset_index().values.tolist()
 
-        self.path = np.array(self.path)
-
         for info in self.annos:
             info[-1] = info[-1].partition('|')[0]
 
@@ -184,6 +182,8 @@ class ChestXray14(VisionDataset):
         
         self.annos = removed_annos
         self.path = removed_path
+
+        self.path = np.array(self.path)
 
 
         self.loader = default_loader

@@ -342,4 +342,7 @@ class Base_Server():
             logging.info("************* Server Acc = {:.2f} **************".format(acc))
         
         # self.device = 'cpu'
+        x = x.to('cpu')
+        target = target.to('cpu')
+
         return acc
