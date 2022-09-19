@@ -20,11 +20,10 @@
                      "--vit_type", "vit_base_patch16_224",
                      "--optimizer", "sgd",
                      "--debug",
-                     "--dp",
+                     "--sample_num=1000",
                      "--partition_method=hetero",
                      "--partition_alpha","0.1",
-                     "--sample_num","-1",
-                     "--prompt_num","10"
+                     "--prompt_num","10",
                     ] 
         }
     ]

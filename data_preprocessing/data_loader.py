@@ -285,7 +285,7 @@ def load_data(datadir, img_size=224, sample_num=-1):
 
 def partition_data(datadir, partition, n_nets, alpha, sample_num=-1):
     logging.info("*********partition data***************")
-    y_train, y_test = load_data(datadir, sample_num)
+    y_train, y_test = load_data(datadir, sample_num = sample_num)
     n_train = y_train.shape[0]
     n_test = y_test.shape[0]
     class_num = len(np.unique(y_train))
