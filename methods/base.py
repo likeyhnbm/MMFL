@@ -123,6 +123,7 @@ class Base_Client():
                 logging.info('(client {}. Local Training Epoch: {} \tLoss: {:.6f}  Thread {}  Map {}'.format(self.client_index,
                                                                             epoch, sum(epoch_loss) / len(epoch_loss), current_process()._identity[0], self.client_map[self.round]))
         weights = self.model.cpu().state_dict()
+        images, labels = images.to('cpu'), labels.to('cpu')
         return weights
 
     # def dp_train(self):

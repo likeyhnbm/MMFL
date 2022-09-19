@@ -6,7 +6,8 @@ import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
 
-from data_preprocessing.datasets import CIFAR_truncated, ImageFolder_custom, ImageFolderTruncated, CifarReduced, ChestMINIST_truncated, ChestXray14
+from data_preprocessing.datasets import CIFAR_truncated, ImageFolder_custom,\
+ImageFolderTruncated, CifarReduced, ChestMINIST_truncated, ChestXray14, EuroSAT
 from PIL import Image
 
 from typing import Callable
@@ -246,6 +247,30 @@ def _data_transforms_cheestxray(datadir, img_size=1024):
 
     return train_transform, valid_transform
 
+def _data_transforms_eurosat(datadir, img_size=1024):
+    
+    train_mean = [0.3448, 0.3806, 0.4081]
+    train_std = [0.2014, 0.1351, 0.1135]
+
+    test_mean = [0.3459, 0.3821, 0.4096]
+    test_std = [0.2019, 0.1353, 0.1140]
+
+    train_transform = transforms.Compose([
+        # transforms.ToPILImage(), # Must convert to PIL image for subsequent operations to run
+        transforms.Resize(img_size),
+        transforms.RandomHorizontalFlip(), # Image augmentation
+        transforms.ToTensor(), # Must convert to pytorch tensor for subsequent operations to run
+        transforms.Normalize(train_mean, train_std),
+    ])
+    valid_transform = transforms.Compose([
+        # transforms.ToPILImage(), # Must convert to PIL image for subsequent operations to run
+        transforms.Resize(img_size),
+        transforms.ToTensor(), # Must convert to pytorch tensor for subsequent operations to run
+        transforms.Normalize(test_mean, test_std),
+    ])
+
+    return train_transform, valid_transform
+
 
 def load_data(datadir, img_size=224, sample_num=-1):
     if 'cifar' in datadir:
@@ -267,6 +292,9 @@ def load_data(datadir, img_size=224, sample_num=-1):
     elif 'chestxray' in datadir:
         train_transform, test_transform = _data_transforms_cheestxray(datadir, img_size)
         dl_obj = ChestXray14
+    elif 'eurosat' in datadir:
+        train_transform, test_transform = _data_transforms_eurosat(datadir, img_size)
+        dl_obj = EuroSAT
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
         dl_obj = ImageFolder_custom
@@ -355,6 +383,11 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
     elif 'chestxray' in datadir:
         train_transform, test_transform = _data_transforms_cheestxray(datadir, img_size)
         dl_obj = ChestXray14
+        workers=8
+        persist=True 
+    elif 'eurosat' in datadir:
+        train_transform, test_transform = _data_transforms_eurosat(datadir, img_size)
+        dl_obj = EuroSAT
         workers=8
         persist=True 
     else:
