@@ -7,7 +7,7 @@ import torch.utils.data as data
 import torchvision.transforms as transforms
 
 from data_preprocessing.datasets import CIFAR_truncated, ImageFolder_custom,\
-ImageFolderTruncated, CifarReduced, ChestMINIST_truncated, ChestXray14, EuroSAT
+ImageFolderTruncated, CifarReduced, ChestMINIST_truncated, ChestXray14, EuroSAT, PCAM_truncated
 from PIL import Image
 
 from typing import Callable
@@ -271,8 +271,33 @@ def _data_transforms_eurosat(datadir, img_size=1024):
 
     return train_transform, valid_transform
 
+def _data_transforms_pcam(datadir, img_size=1024):
+    
+    train_mean = [0.1287, 0.0989, 0.1270]
+    train_std = [0.2894, 0.2400, 0.2829]
+
+    test_mean = [0.1248, 0.0957, 0.1273]
+    test_std = [0.2827, 0.2354, 0.2830]
+
+    train_transform = transforms.Compose([
+        # transforms.ToPILImage(), # Must convert to PIL image for subsequent operations to run
+        transforms.Resize(img_size),
+        transforms.RandomHorizontalFlip(), # Image augmentation
+        transforms.ToTensor(), # Must convert to pytorch tensor for subsequent operations to run
+        transforms.Normalize(train_mean, train_std),
+    ])
+    valid_transform = transforms.Compose([
+        # transforms.ToPILImage(), # Must convert to PIL image for subsequent operations to run
+        transforms.Resize(img_size),
+        transforms.ToTensor(), # Must convert to pytorch tensor for subsequent operations to run
+        transforms.Normalize(test_mean, test_std),
+    ])
+
+    return train_transform, valid_transform
+
 
 def load_data(datadir, img_size=224, sample_num=-1):
+    download = True
     if 'cifar' in datadir:
         if sample_num>-1:
             train_transform, test_transform = _data_transforms_cifar(datadir)
@@ -295,13 +320,17 @@ def load_data(datadir, img_size=224, sample_num=-1):
     elif 'eurosat' in datadir:
         train_transform, test_transform = _data_transforms_eurosat(datadir, img_size)
         dl_obj = EuroSAT
+    elif 'pcam' in datadir:
+        train_transform, test_transform = _data_transforms_pcam(datadir, img_size)
+        dl_obj = PCAM_truncated
+        download = False
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
         dl_obj = ImageFolder_custom
 
     if sample_num>-1:
-        train_ds = dl_obj(datadir, sample_num,train=True, download=True, transform=train_transform)
-        test_ds = dl_obj(datadir, sample_num, train=False, download=True, transform=test_transform)
+        train_ds = dl_obj(datadir, sample_num,train=True, download=download, transform=train_transform)
+        test_ds = dl_obj(datadir, sample_num, train=False, download=download, transform=test_transform)
     else:
         train_ds = dl_obj(datadir, train=True, download=True, transform=train_transform)
         test_ds = dl_obj(datadir, train=False, download=True, transform=test_transform)
@@ -359,6 +388,7 @@ def partition_data(datadir, partition, n_nets, alpha, sample_num=-1):
 
 # for centralized training
 def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, sample_num=-1):
+    download = True
     if 'cifar' in datadir:
         
         train_transform, test_transform = _data_transforms_cifar(datadir,img_size)
@@ -390,6 +420,12 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
         dl_obj = EuroSAT
         workers=8
         persist=True 
+    elif 'pcam' in datadir:
+        train_transform, test_transform = _data_transforms_pcam(datadir, img_size)
+        dl_obj = PCAM_truncated
+        workers=8
+        persist=True 
+        download=False
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
         dl_obj = ImageFolder_custom
@@ -398,12 +434,12 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
 
 
     if sample_num>-1:
-        train_ds = dl_obj(datadir, sample_num, dataidxs=dataidxs, train=True, transform=train_transform, download=True)
+        train_ds = dl_obj(datadir, sample_num, dataidxs=dataidxs, train=True, transform=train_transform, download=download)
         test_ds = dl_obj(datadir, sample_num, train=False, transform=test_transform, download=True)
         train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
         test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
     else:
-        train_ds = dl_obj(datadir, dataidxs=dataidxs, train=True, transform=train_transform, download=True)
+        train_ds = dl_obj(datadir, dataidxs=dataidxs, train=True, transform=train_transform, download=download)
         test_ds = dl_obj(datadir, train=False, transform=test_transform, download=True)
     
         train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)

@@ -5,11 +5,12 @@ import numpy as np
 import torch.utils.data as data
 from PIL import Image
 from torchvision.datasets import CIFAR10
-from torchvision.datasets import CIFAR100
+from torchvision.datasets import CIFAR100, PCAM
 from torchvision.datasets import DatasetFolder, ImageFolder, VisionDataset
 from torchvision import transforms
 import os
 import pandas as pd
+import h5py
 # from medmnist import ChestMNIST
 # import hub
 
@@ -477,3 +478,75 @@ class EuroSAT(VisionDataset):
 
     def __len__(self):
         return len(self.data)
+
+class PCAM_truncated(data.Dataset):
+
+    def __init__(self, root, dataidxs=None, train=True, transform=None, target_transform=None, download=False):
+
+        self.root = root
+        self.dataidxs = dataidxs
+        self.train = train
+        self.transform = transform
+        self.target_transform = target_transform
+        self.download = download
+
+        self.data, self.target = self.__build_truncated_dataset__()
+
+    def __build_truncated_dataset__(self):
+        print("download = " + str(self.download))
+        split = 'train' if self.train else 'test'
+
+        dataobj = PCAM(self.root, split, self.transform, self.target_transform, self.download)
+
+        self._base_folder = dataobj._base_folder
+
+        images_file = dataobj._FILES[dataobj._split]["images"][0]
+        
+        targets_file = dataobj._FILES[dataobj._split]["targets"][0]
+        self.targets_file = targets_file
+
+        with h5py.File(self._base_folder / targets_file) as targets_data:
+            target = targets_data['y'][:,0,0,0]
+
+        return images_file, target
+
+    # def truncate_channel(self, index):
+    #     for i in range(index.shape[0]):
+    #         gs_index = index[i]
+    #         self.data[gs_index, :, :, 1] = 0.0
+    #         self.data[gs_index, :, :, 2] = 0.0
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        if self.dataidxs:
+            index = self.dataidxs[index]
+
+        with h5py.File(self._base_folder / self.data) as images_data:
+            img = Image.fromarray(images_data["x"][index]).convert("RGB")
+
+        # with self.h5py.File(self._base_folder / self.target) as targets_data:
+        #     target = int(targets_data["y"][index, 0, 0, 0])
+        target = self.target[index]
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return img, target
+
+    def __len__(self):
+        if self.dataidxs:
+            return len(self.dataidxs)
+
+        with h5py.File(self._base_folder / self.targets_file) as targets_data:
+            length = len(targets_data['y'])
+
+        return length
