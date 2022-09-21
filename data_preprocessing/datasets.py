@@ -524,7 +524,7 @@ class PCAM_truncated(data.Dataset):
         Returns:
             tuple: (image, target) where target is index of the target class.
         """
-        if self.dataidxs:
+        if self.dataidxs is not None:
             index = self.dataidxs[index]
 
         with h5py.File(self._base_folder / self.data) as images_data:
@@ -543,7 +543,7 @@ class PCAM_truncated(data.Dataset):
         return img, target
 
     def __len__(self):
-        if self.dataidxs:
+        if self.dataidxs is not None:
             return len(self.dataidxs)
 
         with h5py.File(self._base_folder / self.targets_file) as targets_data:
