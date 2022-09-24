@@ -44,7 +44,7 @@ def add_args(parser):
                         help='baseline method')
     parser.add_argument('--prompt_num', type=int, default=10, metavar='N',
                         help='prompt number for vpt') 
-    parser.add_argument('--vit_type', type=str, default='vit_small_patch16_384', choices=['vit_small_patch32_224','vit_small_patch16_224', 'vit_base_patch16_224','vit_base_patch16_224_in21k'] , metavar='N',
+    parser.add_argument('--vit_type', type=str, default='vit_base_patch16_224_in21k' , metavar='N',
                         help='type of vpt')  
     parser.add_argument('--vpt_type', type=str, default='Shallow', choices= ['Shallow', 'Deep'], metavar='N',
                         help='type of vpt')
