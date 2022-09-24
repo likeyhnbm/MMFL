@@ -29,7 +29,9 @@ import methods.prompt as prompt
 import methods.prompt_official as prompt_official
 import methods.adapter as adapter
 import methods.bias as bias
+import methods.shufflenet as shufflenet
 import data_preprocessing.custom_multiprocess as cm
+from torchvision.models import shufflenet_v2_x0_5
 
 
 def add_args(parser):
@@ -42,7 +44,7 @@ def add_args(parser):
                         help='baseline method')
     parser.add_argument('--prompt_num', type=int, default=10, metavar='N',
                         help='prompt number for vpt') 
-    parser.add_argument('--vit_type', type=str, default='vit_small_patch16_384', choices=['vit_small_patch32_224','vit_small_patch16_224', 'vit_base_patch16_224','vit_base_patch16_224_in21k'] , metavar='N',
+    parser.add_argument('--vit_type', type=str, default='vit_base_patch16_224_in21k' , metavar='N',
                         help='type of vpt')  
     parser.add_argument('--vpt_type', type=str, default='Shallow', choices= ['Shallow', 'Deep'], metavar='N',
                         help='type of vpt')
@@ -305,6 +307,15 @@ if __name__ == "__main__":
         server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
                             'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]       
+    elif args.method=='shufflenet':
+        Server = shufflenet.Server
+        Client = shufflenet.Client
+        Model = shufflenet_v2_x0_5
+        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
+        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)] 
+
+   
     else:
         raise ValueError('Invalid --method chosen! Please choose from availible methods.')
 
