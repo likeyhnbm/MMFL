@@ -17,3 +17,6 @@ wandb
 test.ipynb
 *.ipynb
 
+#utils
+gdrive
+
