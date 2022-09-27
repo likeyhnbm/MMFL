@@ -154,8 +154,8 @@ def set_random_seed(seed=1):
     torch.cuda.manual_seed_all(seed)
     ## NOTE: If you want every run to be exactly the same each time
     ##       uncomment the following lines
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
 
 # Helper Functions
 def init_process(q, Client):
