@@ -7,7 +7,7 @@ import torch.utils.data as data
 import torchvision.transforms as transforms
 
 from data_preprocessing.datasets import CIFAR_truncated, ImageFolder_custom,\
-ImageFolderTruncated, CifarReduced, ChestMINIST_truncated, ChestXray14, EuroSAT, PCAM_truncated
+ImageFolderTruncated, CifarReduced, ChestMINIST_truncated, ChestXray14, EuroSAT, PCAM_Reduced, PCAM_truncated
 from PIL import Image
 
 from typing import Callable
@@ -322,7 +322,7 @@ def load_data(datadir, img_size=224, sample_num=-1):
         dl_obj = EuroSAT
     elif 'pcam' in datadir:
         train_transform, test_transform = _data_transforms_pcam(datadir, img_size)
-        dl_obj = PCAM_truncated
+        dl_obj = PCAM_truncated if sample_num == -1 else PCAM_Reduced
         download = False
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
@@ -334,8 +334,10 @@ def load_data(datadir, img_size=224, sample_num=-1):
     else:
         train_ds = dl_obj(datadir, train=True, download=True, transform=train_transform)
         test_ds = dl_obj(datadir, train=False, download=True, transform=test_transform)
-
-    y_train, y_test = train_ds.target, test_ds.target
+    if 'pcam' in datadir and sample_num != -1:
+        y_train, y_test = train_ds.target[train_ds.sample_idxs], test_ds.target
+    else:
+        y_train, y_test = train_ds.target, test_ds.target
 
     return (y_train, y_test)
 
@@ -422,7 +424,7 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
         persist=True 
     elif 'pcam' in datadir:
         train_transform, test_transform = _data_transforms_pcam(datadir, img_size)
-        dl_obj = PCAM_truncated
+        dl_obj = PCAM_truncated if sample_num == -1 else PCAM_Reduced
         workers=8
         persist=True 
         download=False

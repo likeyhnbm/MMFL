@@ -318,6 +318,8 @@ class CifarReduced(CIFAR_truncated):
         self.download = download
         self.data, self.target = self.__build_truncated_dataset__()
         total_num = len(self.data)
+        # when first partition the data, reduce the data and target
+        # when load data from the client, total_num will be less than sample_num.
         if total_num > sample_num and self.train:
             self.dataidxs = np.random.choice(total_num, sample_num)
             self.data, self.target = self.__build_truncated_dataset__()
@@ -489,6 +491,7 @@ class PCAM_truncated(data.Dataset):
         self.transform = transform
         self.target_transform = target_transform
         self.download = download
+        self.sample_idxs = None
 
         self.data, self.target = self.__build_truncated_dataset__()
 
@@ -526,6 +529,9 @@ class PCAM_truncated(data.Dataset):
         """
         if self.dataidxs is not None:
             index = self.dataidxs[index]
+        if self.sample_idxs is not None:
+            index = self.sample_idxs[index]
+
 
         with h5py.File(self._base_folder / self.data) as images_data:
             img = Image.fromarray(images_data["x"][index]).convert("RGB")
@@ -543,6 +549,8 @@ class PCAM_truncated(data.Dataset):
         return img, target
 
     def __len__(self):
+        if self.sample_idxs is not None and self.dataidxs is None:
+            return len(self.sample_idxs)
         if self.dataidxs is not None:
             return len(self.dataidxs)
 
@@ -550,3 +558,18 @@ class PCAM_truncated(data.Dataset):
             length = len(targets_data['y'])
 
         return length
+
+class PCAM_Reduced(PCAM_truncated):
+    def __init__(self, root, sample_num, dataidxs=None, train=True, transform=None, target_transform=None, download=False):
+        self.root = root
+        self.dataidxs = dataidxs
+        self.train = train
+        self.transform = transform
+        self.target_transform = target_transform
+        self.download = download
+        self.data, self.target = self.__build_truncated_dataset__()
+        total_num = len(self.target)
+        self.sample_idxs = None
+        if total_num > sample_num and self.train:
+            self.sample_idxs = np.random.choice(total_num, sample_num)
+            # self.data, self.target = self.__build_truncated_dataset__()
