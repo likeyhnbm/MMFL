@@ -76,10 +76,10 @@ def add_args(parser):
 
     parser.add_argument('--wd', help='weight decay parameter;', type=float, default=0.0001)
 
-    parser.add_argument('--epochs', type=int, default=20, metavar='EP',
+    parser.add_argument('--epochs', type=int, default=10, metavar='EP',
                         help='how many epochs will be trained locally')
 
-    parser.add_argument('--comm_round', type=int, default=100,
+    parser.add_argument('--comm_round', type=int, default=50,
                         help='how many round of communications we shoud use')
 
     parser.add_argument('--pretrained_backbone', action='store_true', default=False,
