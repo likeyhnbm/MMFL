@@ -68,7 +68,7 @@ class Base_Client():
 
             weights = self.train() #if not self.args.dp else self.dp_train()
             acc = self.test()
-            self.model.to('cpu')
+            # self.model.to('cpu')
             with torch.cuda.device(self.device):
                 torch.cuda.empty_cache()
             client_results.append({'weights':weights, 'num_samples':num_samples,'acc':acc, 'client_index':self.client_index})
@@ -123,7 +123,7 @@ class Base_Client():
                 logging.info('(client {}. Local Training Epoch: {} \tLoss: {:.6f}  Thread {}  Map {}'.format(self.client_index,
                                                                             epoch, sum(epoch_loss) / len(epoch_loss), current_process()._identity[0], self.client_map[self.round]))
         weights = self.model.cpu().state_dict()
-        images, labels = images.to('cpu'), labels.to('cpu')
+        # images, labels = images.to('cpu'), labels.to('cpu')
         return weights
 
     # def dp_train(self):
@@ -250,8 +250,8 @@ class Base_Server():
     def __init__(self,server_dict, args):
         self.train_data = server_dict['train_data']
         self.test_data = server_dict['test_data']
-        # self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
-        self.device = 'cpu'
+        self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
+        # self.device = 'cpu'
         if 'model_type' in server_dict:
             self.model_type = server_dict['model_type']
         elif 'model' in server_dict:
@@ -266,10 +266,10 @@ class Base_Server():
         server_outputs = self.operations(received_info)
         try:
             # self.device = 'cuda:{}'.format(torch.cuda.device_count()-1)
-            self.device = 'cuda:0'
+            # self.device = 'cuda:0'
             acc = self.test()
-            self.model.to('cpu')
-            self.device = 'cpu'
+            # self.model.to('cpu')
+            # self.device = 'cpu'
             with torch.cuda.device('cuda:1'):
                 torch.cuda.empty_cache()
         except:
@@ -343,7 +343,7 @@ class Base_Server():
             logging.info("************* Server Acc = {:.2f} **************".format(acc))
         
         # self.device = 'cpu'
-        x = x.to('cpu')
-        target = target.to('cpu')
+        # x = x.to('cpu')
+        # target = target.to('cpu')
 
         return acc
