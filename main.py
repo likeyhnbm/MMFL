@@ -140,6 +140,9 @@ def add_args(parser):
 
     parser.add_argument('--reducation_factor', type=int, default=8, metavar='N',
                     help='reducation_factor for adapter')
+    
+    parser.add_argument('--seed', type=int, default=1, metavar='N',
+                    help='random seed')
 
     args = parser.parse_args()
 
@@ -159,9 +162,10 @@ def set_random_seed(seed=1):
 
 # Helper Functions
 def init_process(q, Client):
-    set_random_seed()
+    
     global client
     ci = q.get()
+    set_random_seed(ci[1].seed)
     client = Client(ci[0], ci[1])
     # client.server = 
 
@@ -218,16 +222,17 @@ def get_parameter_number(model):
     return {'Total': total_num, 'Trainable': trainable_num}
 
 if __name__ == "__main__":
-    try:
-     set_start_method('spawn')
-    except RuntimeError:
-        pass
-    set_random_seed()
+
     
     # get arguments
     parser = argparse.ArgumentParser()
     args = add_args(parser)
-
+    
+    try:
+     set_start_method('spawn')
+    except RuntimeError:
+        pass
+    set_random_seed(args.seed)
 
 
 

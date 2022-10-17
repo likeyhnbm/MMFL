@@ -12,6 +12,7 @@ chestxray
 # log
 logs
 wandb
+*.pt
 
 # test files
 test.ipynb
@@ -19,4 +20,9 @@ test.ipynb
 
 #utils
 gdrive
+
+# plots
+*.pdf
+*.png
+*.svg
 
