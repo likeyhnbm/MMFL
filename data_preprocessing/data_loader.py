@@ -7,7 +7,7 @@ import torch.utils.data as data
 import torchvision.transforms as transforms
 
 from data_preprocessing.datasets import CIFAR_truncated, ImageFolder_custom,\
-ImageFolderTruncated, CifarReduced, ChestMINIST_truncated, ChestXray14, EuroSAT, PCAM_Reduced, PCAM_truncated
+ImageFolderTruncated, CifarReduced, ChestMINIST_truncated, ChestXray14, EuroSAT, PCAM_Reduced, PCAM_truncated, Resisc45
 from PIL import Image
 
 from typing import Callable
@@ -182,6 +182,30 @@ def _data_transforms_imagenet(datadir):
 
     return train_transform, valid_transform
 
+def _data_transforms_resisc45(datadir, img_size=224):
+    
+    train_mean = [0.3682, 0.3810, 0.3437]
+    train_std = [0.1998, 0.1815, 0.1810]
+
+    test_mean = [0.3685, 0.3814, 0.3438]
+    test_std = [0.2406, 0.2406, 0.2406]
+
+    train_transform = transforms.Compose([
+        # transforms.ToPILImage(), # Must convert to PIL image for subsequent operations to run
+        transforms.Resize(img_size),
+        transforms.RandomHorizontalFlip(), # Image augmentation
+        transforms.ToTensor(), # Must convert to pytorch tensor for subsequent operations to run
+        transforms.Normalize(train_mean, train_std),
+    ])
+    valid_transform = transforms.Compose([
+        # transforms.ToPILImage(), # Must convert to PIL image for subsequent operations to run
+        transforms.Resize(img_size),
+        transforms.ToTensor(), # Must convert to pytorch tensor for subsequent operations to run
+        transforms.Normalize(test_mean, test_std),
+    ])
+
+    return train_transform, valid_transform
+
 def _data_transforms_prompt(datadir):
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
@@ -320,6 +344,9 @@ def load_data(datadir, img_size=224, sample_num=-1):
     elif 'eurosat' in datadir:
         train_transform, test_transform = _data_transforms_eurosat(datadir, img_size)
         dl_obj = EuroSAT
+    elif 'resisc45' in datadir:
+        train_transform, test_transform = _data_transforms_resisc45(datadir, img_size)
+        dl_obj = Resisc45
     elif 'pcam' in datadir:
         train_transform, test_transform = _data_transforms_pcam(datadir, img_size)
         dl_obj = PCAM_truncated if sample_num == -1 else PCAM_Reduced
@@ -420,6 +447,11 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
     elif 'eurosat' in datadir:
         train_transform, test_transform = _data_transforms_eurosat(datadir, img_size)
         dl_obj = EuroSAT
+        workers=8
+        persist=True 
+    elif 'resisc45' in datadir:
+        train_transform, test_transform = _data_transforms_resisc45(datadir, img_size)
+        dl_obj = Resisc45
         workers=8
         persist=True 
     elif 'pcam' in datadir:
