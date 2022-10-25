@@ -573,3 +573,54 @@ class PCAM_Reduced(PCAM_truncated):
         if total_num > sample_num and self.train:
             self.sample_idxs = np.random.choice(total_num, sample_num)
             # self.data, self.target = self.__build_truncated_dataset__()
+
+class Resisc45(DatasetFolder):
+    def __init__(self, root, dataidxs=None, train=True, transform=None, target_transform=None, download=False):
+        self.root = root
+        self.dataidxs = dataidxs
+        self.train = train
+        self.transform = transform
+        self.target_transform = target_transform
+
+
+        imagefolder_obj = ImageFolder(self.root, self.transform)
+
+        if train:
+            split = os.path.join(root, "resisc45_train.csv")
+        else:
+            split = os.path.join(root, "resisc45_test.csv")
+
+        self.split = pd.read_csv(split, header=None)
+        samples = self.split[0].apply(lambda x: os.path.join(root, x) ).to_list()
+
+        self.loader = imagefolder_obj.loader
+
+        self.samples = []
+        for sample, label in imagefolder_obj.samples:
+            if sample in samples:
+                self.samples.append((sample, label))
+
+
+        if self.dataidxs is not None:
+            self.samples = np.array(self.samples)[self.dataidxs]
+        else:
+            self.samples = np.array(self.samples)
+        self.target = self.samples[:,1].astype(np.int64)
+
+    def __getitem__(self, index):
+        path = self.samples[index][0]
+        target = self.samples[index][1]
+        target = int(target)
+        sample = self.loader(path)
+        if self.transform is not None:
+            sample = self.transform(sample)
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return sample, target
+
+    def __len__(self):
+        if self.dataidxs is None:
+            return len(self.samples)
+        else:
+            return len(self.dataidxs)

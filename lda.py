@@ -300,7 +300,7 @@ if __name__ == "__main__":
          class_num = dl.load_partition_data(args.data_dir, args.partition_method, args.partition_alpha, args.client_number, args.batch_size)
 
     idx = 0
-    from sklearn.manifold import TSNE
+    from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
     import pandas as pd
     import seaborn as sns
     for infile in os.listdir(model_dir):
@@ -315,12 +315,14 @@ if __name__ == "__main__":
             # avg_feats[idx] = avg_feat
             idx += 1
 
-            tsne = TSNE(n_components=2, verbose=1)
-            tsne_results = tsne.fit_transform(avg_feat)
+            # tsne = TSNE(n_components=2, verbose=1)
+            # tsne_results = tsne.fit_transform(avg_feat)
+            lda = LinearDiscriminantAnalysis()
+            results = lda.fit_transform(avg_feat)
 
             df=pd.DataFrame(labels, columns=['y'])
-            df['tsne-2d-one'] = tsne_results[:,0]
-            df['tsne-2d-two'] = tsne_results[:,1]
+            df['tsne-2d-one'] = results[:,0]
+            df['tsne-2d-two'] = results[:,1]
 
             plt.figure(figsize=(16,10))
             colors = sns.color_palette("hls", 100)
@@ -340,7 +342,7 @@ if __name__ == "__main__":
             # g.legend_.set_title(None)
             # g.legend_.set_label(['normal', 'abnormal'])
 
-            plt.savefig(os.path.join('t-sne',type+".png"))
+            plt.savefig(os.path.join('lda',type+".png"))
 
 
 
