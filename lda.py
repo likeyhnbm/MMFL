@@ -226,7 +226,7 @@ def get_avg_feat(model_dir, test_data, type):
     # model.load_state_dict(torch.load(model_dir,  map_location = torch.device(device)))
 
     
-    weights = torch.load(model_dir)
+    weights = torch.load(model_dir, map_location=torch.device(device))
     model = get_model(type, weights)
     model.eval()
     model.to(device)
@@ -306,6 +306,7 @@ if __name__ == "__main__":
 
     type2label = {
         'pretrain' : 0,
+        'head': 4,
         'bias' : 1,
         'adapter': 2,
         'prompt' : 3
@@ -315,8 +316,8 @@ if __name__ == "__main__":
     xs = []
     ys = []
     for infile in os.listdir(model_dir):
-        # if infile.endswith('.pt') and 'server' not in infile:
-        if infile.endswith('pretrain.pt'):
+        if infile.endswith('.pt') and 'server' not in infile:
+        # if infile.endswith('pretrain.pt') or infile.endswith('bias.pt'):
             type = infile.split('.')[0]
             print(type)
             avg_feat, labels = get_avg_feat('{}/{}'.format(model_dir, infile), test_data_global, type)
@@ -325,29 +326,32 @@ if __name__ == "__main__":
             # idx = int(infile.split('.')[0].split('_')[1])
             # avg_feats[idx] = avg_feat
             idx += 1
-            xs.append(avg_feat)
-            ys.append(type2label[type])
+            for sample in avg_feat:
+                xs.append(sample)
+                ys.append(type2label[type])
 
             # tsne = TSNE(n_components=2, verbose=1)
             # tsne_results = tsne.fit_transform(avg_feat)
-    lda = LinearDiscriminantAnalysis()
+    xs = np.array(xs)
+    ys = np.array(ys)
+    lda = LinearDiscriminantAnalysis(n_components=2)
     results = lda.fit_transform(xs, ys)
 
-    df=pd.DataFrame([label2type[y] for y in ys], columns=['y'])
+    df=pd.DataFrame([label2type[y] for y in ys], columns=['Method'])
     df['tsne-2d-one'] = results[:,0]
     df['tsne-2d-two'] = results[:,1]
 
     plt.figure(figsize=(16,10))
-    colors = sns.color_palette("hls", 100)
-    color_dict = {i: colors[i] for i in range(100)}
+    colors = sns.color_palette("hls", 5)
+    color_dict = {label2type[i]: colors[i] for i in range(5)}
 
     g = sns.scatterplot(
         x="tsne-2d-one", y="tsne-2d-two",
-        hue="y",
+        hue="Method",
         # hue_order = ['normal', 'abnormal'],
         palette=color_dict,
         data=df,
-        legend="y",
+        legend='brief',
         alpha=0.8
     )
     g.set(xticks=[], yticks=[], xlabel=None, ylabel=None)
@@ -355,7 +359,7 @@ if __name__ == "__main__":
     # g.legend_.set_title(None)
     # g.legend_.set_label(['normal', 'abnormal'])
 
-    plt.savefig(os.path.join('lda',type+".png"))
+    plt.savefig(os.path.join('lda',"lda.png"))
 
 
 
