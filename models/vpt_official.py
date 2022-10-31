@@ -245,7 +245,7 @@ class VPT_ViT(nn.Module):
 
     def forward(self,x):
         self.basic_model.eval()
-        x = self.forward_features(x)
+        x = self.forward_features(x) if self.prompt_num > 0  else self.basic_model.forward_features(x)
         x = self.basic_model.forward_head(x)
         return x
     

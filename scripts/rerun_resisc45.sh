@@ -1,8 +1,8 @@
 # client_num client_sample partition_method alpha thread_num dataset dp
 
-for seed in 42 3407
+for seed in 1 42 3407
 do
-    for dataset in dataset/cifar100/ 
+    for dataset in dataset/resisc45/ 
     do
         # Reduce sample client for fine-tuning
         sh scripts/optimal/pretrain.sh 64 0.125 hetero 0.1 8 $dataset\ --seed=$seed
