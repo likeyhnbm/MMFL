@@ -10,6 +10,14 @@ class Client(Base_Client):
 
         self.model = self.model_type(client_dict['type'], num_classes=self.num_classes, pretrained=True).to(self.device)
         self.criterion = torch.nn.CrossEntropyLoss().to(self.device)
+
+        if 'mae' in args.ssl:
+            dict = torch.load(args.ssl)
+            self.model.load_state_dict(dict['model'], strict=False)
+        elif 'moco' in args.ssl:
+            dict = torch.load(args.ssl)
+            dict = { k[7:]:v for k,v in dict['state_dict'].items()}
+            self.model.load_state_dict(dict, strict=False)
         
 
         if args.optimizer == 'sgd':

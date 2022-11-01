@@ -48,6 +48,8 @@ def add_args(parser):
                         help='type of vpt')  
     parser.add_argument('--vpt_type', type=str, default='Shallow', choices= ['Shallow', 'Deep'], metavar='N',
                         help='type of vpt')
+    parser.add_argument('--ssl', type=str, default='none', metavar='N',
+                        help='type of self-supervised backbone')
     parser.add_argument('--vpt_projection', type=int, default=-1, metavar='D',
                     help='projection dimension for VIT')
     parser.add_argument('--vpt_drop', type=float, default=0.1, metavar='D',
@@ -289,6 +291,15 @@ if __name__ == "__main__":
         Server = prompt.Server
         Client = prompt.Client
         basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
+
+        if 'mae' in args.ssl:
+            dict = torch.load(args.ssl)
+            basic_model.load_state_dict(dict['model'], strict=False)
+        elif 'moco' in args.ssl:
+            dict = torch.load(args.ssl)
+            dict = { k[7:]:v for k,v in dict['state_dict'].items()}
+            basic_model.load_state_dict(dict, strict=False)
+
         Model = build_promptmodel
         server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
@@ -299,6 +310,16 @@ if __name__ == "__main__":
         Server = prompt_official.Server
         Client = prompt_official.Client
         basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
+
+                
+        if 'mae' in args.ssl:
+            dict = torch.load(args.ssl)
+            basic_model.load_state_dict(dict['model'], strict=False)
+        elif 'moco' in args.ssl:
+            dict = torch.load(args.ssl)
+            dict = { k[7:]:v for k,v in dict['state_dict'].items()}
+            basic_model.load_state_dict(dict, strict=False)
+
         Model = build_official
         server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
@@ -308,6 +329,17 @@ if __name__ == "__main__":
         Server = adapter.Server
         Client = adapter.Client
         basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
+
+                
+        if 'mae' in args.ssl:
+            dict = torch.load(args.ssl)
+            basic_model.load_state_dict(dict['model'], strict=False)
+        elif 'moco' in args.ssl:
+            dict = torch.load(args.ssl)
+            dict = { k[7:]:v for k,v in dict['state_dict'].items()}
+            basic_model.load_state_dict(dict, strict=False)
+
+            
         Model = build_adapter_model
         server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),

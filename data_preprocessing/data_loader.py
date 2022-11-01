@@ -8,6 +8,7 @@ import torchvision.transforms as transforms
 
 from data_preprocessing.datasets import CIFAR_truncated, ImageFolder_custom,\
 ImageFolderTruncated, CifarReduced, ChestMINIST_truncated, ChestXray14, EuroSAT, PCAM_Reduced, PCAM_truncated, Resisc45
+from torchvision.datasets import ImageNet
 from PIL import Image
 
 from typing import Callable
@@ -353,16 +354,22 @@ def load_data(datadir, img_size=224, sample_num=-1):
         download = False
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
-        dl_obj = ImageFolder_custom
-
-    if sample_num>-1:
-        train_ds = dl_obj(datadir, sample_num,train=True, download=download, transform=train_transform)
-        test_ds = dl_obj(datadir, sample_num, train=False, download=download, transform=test_transform)
+        # dl_obj = ImageFolder_custom
+        dl_obj = ImageNet
+    if 'imagenet' in datadir:
+        test_ds = dl_obj(datadir, 'val', transform=test_transform)
+        train_ds = test_ds
     else:
-        train_ds = dl_obj(datadir, train=True, download=True, transform=train_transform)
-        test_ds = dl_obj(datadir, train=False, download=True, transform=test_transform)
+        if sample_num>-1:
+            train_ds = dl_obj(datadir, sample_num,train=True, download=download, transform=train_transform)
+            test_ds = dl_obj(datadir, sample_num, train=False, download=download, transform=test_transform)
+        else:
+            train_ds = dl_obj(datadir, train=True, download=True, transform=train_transform)
+            test_ds = dl_obj(datadir, train=False, download=True, transform=test_transform)
     if 'pcam' in datadir and sample_num != -1:
         y_train, y_test = train_ds.target[train_ds.sample_idxs], test_ds.target
+    elif 'imagenet' in datadir:
+        y_train, y_test = np.array(train_ds.targets), np.array(test_ds.targets)
     else:
         y_train, y_test = train_ds.target, test_ds.target
 
@@ -462,22 +469,25 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
         download=False
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
-        dl_obj = ImageFolder_custom
+        # dl_obj = ImageFolder_custom
+        dl_obj = ImageNet
         workers=8
-        persist=True
-
-
-    if sample_num>-1:
-        train_ds = dl_obj(datadir, sample_num, dataidxs=dataidxs, train=True, transform=train_transform, download=download)
-        test_ds = dl_obj(datadir, sample_num, train=False, transform=test_transform, download=True)
-        train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
-        test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
+        persist=False
+    if 'imagenet' in datadir:
+        test_ds = dl_obj(datadir, 'val', transform=test_transform)
+        train_ds = test_ds
     else:
-        train_ds = dl_obj(datadir, dataidxs=dataidxs, train=True, transform=train_transform, download=download)
-        test_ds = dl_obj(datadir, train=False, transform=test_transform, download=True)
+        if sample_num>-1:
+            train_ds = dl_obj(datadir, sample_num, dataidxs=dataidxs, train=True, transform=train_transform, download=download)
+            test_ds = dl_obj(datadir, sample_num, train=False, transform=test_transform, download=True)
+            train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
+            test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
+        else:
+            train_ds = dl_obj(datadir, dataidxs=dataidxs, train=True, transform=train_transform, download=download)
+            test_ds = dl_obj(datadir, train=False, transform=test_transform, download=True)
     
-        train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
-        test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
+    train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
+    test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
 
     return train_dl, test_dl
 

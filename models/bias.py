@@ -21,11 +21,19 @@ def build_bias_model(type, num_classes=2):
     return model
 
 class Bias_ViT(nn.Module):
-    def __init__(self, type, num_classes=100):
+    def __init__(self, type, num_classes=100, ssl=None):
 
         super(Bias_ViT, self).__init__()
 
         self.model = timm.create_model(type,num_classes=num_classes,pretrained=True)
+
+        if 'mae' in ssl:
+            dict = torch.load(ssl)
+            self.model.load_state_dict(dict['model'], strict=False)
+        elif 'moco' in ssl:
+            dict = torch.load(ssl)
+            dict = { k[7:]:v for k,v in dict['state_dict'].items()}
+            self.model.load_state_dict(dict, strict=False)
 
         self._freeze()
 
