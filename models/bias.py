@@ -14,9 +14,9 @@ from timm.models.vision_transformer import VisionTransformer, PatchEmbed, Block
 import timm
 from copy import deepcopy
 
-def build_bias_model(type, num_classes=2):
+def build_bias_model(type, num_classes=2, ssl=None):
 
-    model = Bias_ViT(type, num_classes=num_classes)
+    model = Bias_ViT(type, num_classes=num_classes, ssl=ssl)
 
     return model
 

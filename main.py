@@ -297,8 +297,13 @@ if __name__ == "__main__":
             basic_model.load_state_dict(dict['model'], strict=False)
         elif 'moco' in args.ssl:
             dict = torch.load(args.ssl)
-            dict = { k[7:]:v for k,v in dict['state_dict'].items()}
-            basic_model.load_state_dict(dict, strict=False)
+            # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
+            new_dict = {}
+            for k,v in dict['state_dict'].items():
+                if 'head' not in k:
+                    new_dict.update({k[7:]:v})
+
+            basic_model.load_state_dict(new_dict, strict=False)
 
         Model = build_promptmodel
         server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
@@ -317,8 +322,13 @@ if __name__ == "__main__":
             basic_model.load_state_dict(dict['model'], strict=False)
         elif 'moco' in args.ssl:
             dict = torch.load(args.ssl)
-            dict = { k[7:]:v for k,v in dict['state_dict'].items()}
-            basic_model.load_state_dict(dict, strict=False)
+            # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
+            new_dict = {}
+            for k,v in dict['state_dict'].items():
+                if 'head' not in k:
+                    new_dict.update({k[7:]:v})
+
+            basic_model.load_state_dict(new_dict, strict=False)
 
         Model = build_official
         server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
@@ -336,8 +346,13 @@ if __name__ == "__main__":
             basic_model.load_state_dict(dict['model'], strict=False)
         elif 'moco' in args.ssl:
             dict = torch.load(args.ssl)
-            dict = { k[7:]:v for k,v in dict['state_dict'].items()}
-            basic_model.load_state_dict(dict, strict=False)
+            # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
+            new_dict = {}
+            for k,v in dict['state_dict'].items():
+                if 'head' not in k:
+                    new_dict.update({k[7:]:v})
+
+            basic_model.load_state_dict(new_dict, strict=False)
 
             
         Model = build_adapter_model

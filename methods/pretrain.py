@@ -16,8 +16,13 @@ class Client(Base_Client):
             self.model.load_state_dict(dict['model'], strict=False)
         elif 'moco' in args.ssl:
             dict = torch.load(args.ssl)
-            dict = { k[7:]:v for k,v in dict['state_dict'].items()}
-            self.model.load_state_dict(dict, strict=False)
+            # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
+            new_dict = {}
+            for k,v in dict['state_dict'].items():
+                if 'head' not in k:
+                    new_dict.update({k[7:]:v})
+
+            self.model.load_state_dict(new_dict, strict=False)
         
 
         if args.optimizer == 'sgd':
