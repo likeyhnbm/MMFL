@@ -365,41 +365,51 @@ if __name__ == "__main__":
     #     args.mutual=False
 
     data_paths = ['dataset/imagenet', 'dataset/cifar100', 'dataset/resisc45', 'dataset/pcam']
+    formal_name = {
+        'imagenet': 'ImageNet1K (0)',
+        'cifar100': 'CIFAR-100 (6.94)',
+        'resisc45': 'Resisc45 (4.72)',
+        'pcam': 'PCam (22.69)'
+    }
 
-    xs = []
-    ys = []
+    # xs = []
+    # ys = []
 
-    for data_path in data_paths:
-        # if 'imagenet' in data_path:
-        #     continue
-        dataset = data_path.split('/')[-1]
+    # for data_path in data_paths:
+    #     # if 'imagenet' in data_path:
+    #     #     continue
+    #     dataset = data_path.split('/')[-1]
 
-        train_data_num, test_data_num, train_data_global, test_data_global, data_local_num_dict, train_data_local_dict, test_data_local_dict,\
-            class_num = dl.load_partition_data(data_path, args.partition_method, args.partition_alpha, args.client_number, args.batch_size)
+    #     train_data_num, test_data_num, train_data_global, test_data_global, data_local_num_dict, train_data_local_dict, test_data_local_dict,\
+    #         class_num = dl.load_partition_data(data_path, args.partition_method, args.partition_alpha, args.client_number, args.batch_size)
 
-        avg_feat = get_avg_feat_pre('{}/{}'.format(model_dir, 'head.pt'), test_data_global, 'head')
-        for sample in avg_feat:
-                xs.append(sample)
-                ys.append(dataset)
+    #     avg_feat = get_avg_feat_pre('{}/{}'.format(model_dir, 'head.pt'), test_data_global, 'head')
+    #     for sample in avg_feat:
+    #             xs.append(sample)
+    #             ys.append(formal_name[dataset])
 
-        torch.cuda.empty_cache()
+    #     torch.cuda.empty_cache()
 
-    xs = np.array(xs)
-    ys = np.array(ys)
-    lda = LinearDiscriminantAnalysis(n_components=2)
-    results = lda.fit_transform(xs, ys)
+    # xs = np.array(xs)
+    # ys = np.array(ys)
+    # lda = LinearDiscriminantAnalysis(n_components=2)
+    # results = lda.fit_transform(xs, ys)
 
-    df=pd.DataFrame([y for y in ys], columns=['dataset'])
-    df['tsne-2d-one'] = results[:,0]
-    df['tsne-2d-two'] = results[:,1]
+    # df=pd.DataFrame([y for y in ys], columns=['Dataset'])
+    # df['x'] = xs
+    df = pd.read_csv('domain.csv')
+    df = df.rename(columns={'dataset': 'Dataset'})
+    df['Dataset'] = df['Dataset'].apply(lambda x: formal_name[x])
+    # df['tsne-2d-one'] = results[:,0]
+    # df['tsne-2d-two'] = results[:,1]
 
-    plt.figure(figsize=(16,10))
+    plt.figure(figsize=(8,5))
     colors = sns.color_palette("hls", 4)
-    color_dict = { data_paths[i].split('/')[-1]: colors[i] for i in range(4)}
+    color_dict = { list(formal_name.values())[i]: colors[i] for i in range(4)}
 
     g = sns.scatterplot(
         x="tsne-2d-one", y="tsne-2d-two",
-        hue="dataset",
+        hue="Dataset",
         # hue_order = ['normal', 'abnormal'],
         palette=color_dict,
         data=df,
@@ -410,8 +420,8 @@ if __name__ == "__main__":
     # g.legend( ['normal','abnormal'])
     # g.legend_.set_title(None)
     # g.legend_.set_label(['normal', 'abnormal'])
-
-    plt.savefig(os.path.join('lda',"domain.png"))
+    plt.axis('off')
+    plt.savefig(os.path.join('lda',"domain.png"), dpi=300,bbox_inches='tight',pad_inches = 0)
 
     # idx = 0
     # from sklearn.discriminant_analysis import LinearDiscriminantAnalysis

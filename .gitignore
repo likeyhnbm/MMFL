@@ -16,6 +16,7 @@ wandb
 checkpoints
 
 # test files
+misc
 test.ipynb
 *.ipynb
 
