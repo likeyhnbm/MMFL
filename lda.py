@@ -315,20 +315,22 @@ if __name__ == "__main__":
 
     xs = []
     ys = []
+    classes = []
     for infile in os.listdir(model_dir):
         if infile.endswith('.pt') and 'server' not in infile:
         # if infile.endswith('pretrain.pt') or infile.endswith('bias.pt'):
             type = infile.split('.')[0]
             print(type)
             avg_feat, labels = get_avg_feat('{}/{}'.format(model_dir, infile), test_data_global, type)
-            # labels = np.array(labels).flatten()
-            # labels = [j for i in labels for j in i]
+            labels = np.array(labels).flatten()
+            labels = [j for i in labels for j in i]
             # idx = int(infile.split('.')[0].split('_')[1])
             # avg_feats[idx] = avg_feat
             idx += 1
-            for sample in avg_feat:
+            for sample, cls in zip(avg_feat, labels):
                 xs.append(sample)
                 ys.append(type2label[type])
+                classes.append(cls)
 
             # tsne = TSNE(n_components=2, verbose=1)
             # tsne_results = tsne.fit_transform(avg_feat)
@@ -340,6 +342,7 @@ if __name__ == "__main__":
     df=pd.DataFrame([label2type[y] for y in ys], columns=['Method'])
     df['tsne-2d-one'] = results[:,0]
     df['tsne-2d-two'] = results[:,1]
+    df['class'] = classes
 
     plt.figure(figsize=(16,10))
     colors = sns.color_palette("hls", 5)
