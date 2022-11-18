@@ -313,6 +313,14 @@ if __name__ == "__main__":
     }
     label2type = {v:k for k,v in type2label.items()}
 
+    formal_name = {
+        'pretrain': 'Full Fine-tuning',
+        'bias': 'FedPEFT-Bias',
+        'prompt': 'FedPEFT-Prompt',
+        'adapter': 'FedPEFT-Adapter',
+        'head': 'Head-tuning',
+    }
+
     xs = []
     ys = []
     classes = []
@@ -339,14 +347,15 @@ if __name__ == "__main__":
     lda = LinearDiscriminantAnalysis(n_components=2)
     results = lda.fit_transform(xs, ys)
 
-    df=pd.DataFrame([label2type[y] for y in ys], columns=['Method'])
+    df=pd.DataFrame([formal_name[label2type[y]] for y in ys], columns=['Method'])
     df['tsne-2d-one'] = results[:,0]
     df['tsne-2d-two'] = results[:,1]
     df['class'] = classes
+    df.to_csv('misc/method.csv')
 
-    plt.figure(figsize=(16,10))
+    plt.figure(figsize=(5,4))
     colors = sns.color_palette("hls", 5)
-    color_dict = {label2type[i]: colors[i] for i in range(5)}
+    color_dict = {formal_name[label2type[i]]: colors[i] for i in range(5)}
 
     g = sns.scatterplot(
         x="tsne-2d-one", y="tsne-2d-two",
@@ -362,7 +371,7 @@ if __name__ == "__main__":
     # g.legend_.set_title(None)
     # g.legend_.set_label(['normal', 'abnormal'])
 
-    plt.savefig(os.path.join('lda',"lda.png"))
+    plt.savefig(os.path.join('lda',"lda.png"), dpi=300)
 
 
 

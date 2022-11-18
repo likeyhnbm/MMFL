@@ -26,19 +26,20 @@ class Bias_ViT(nn.Module):
         super(Bias_ViT, self).__init__()
 
         self.model = timm.create_model(type,num_classes=num_classes,pretrained=True)
+        
+        if ssl:
+            if 'mae' in ssl:
+                dict = torch.load(ssl)
+                self.model.load_state_dict(dict['model'], strict=False)
+            elif 'moco' in ssl:
+                dict = torch.load(ssl)
+                # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
+                new_dict = {}
+                for k,v in dict['state_dict'].items():
+                    if 'head' not in k:
+                        new_dict.update({k[7:]:v})
 
-        if 'mae' in ssl:
-            dict = torch.load(ssl)
-            self.model.load_state_dict(dict['model'], strict=False)
-        elif 'moco' in ssl:
-            dict = torch.load(ssl)
-            # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
-            new_dict = {}
-            for k,v in dict['state_dict'].items():
-                if 'head' not in k:
-                    new_dict.update({k[7:]:v})
-
-            self.model.load_state_dict(new_dict, strict=False)
+                self.model.load_state_dict(new_dict, strict=False)
 
         self._freeze()
 
