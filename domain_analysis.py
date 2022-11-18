@@ -403,7 +403,7 @@ if __name__ == "__main__":
     # df['tsne-2d-one'] = results[:,0]
     # df['tsne-2d-two'] = results[:,1]
 
-    plt.figure(figsize=(8,5))
+    plt.figure(figsize=(5,4),dpi=300)
     colors = sns.color_palette("hls", 4)
     color_dict = { list(formal_name.values())[i]: colors[i] for i in range(4)}
 
