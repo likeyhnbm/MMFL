@@ -10,23 +10,19 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "env": { "PYTHONPATH": "${workspaceFolder}"},
-            // "args": ["--model_dir", "/home/guangyu/FedPrompt/head.pt","--test"]
-            // "args": ["--method", "shufflenet", "--client_number", "4" ,"--thread_number", "2" ,
-            //         "--client_sample","0.5",
-            //         "--comm_round", "50", 
-            //         "--lr", "5e-4", 
-            //         "--epochs", "10",
-            //          "--data_dir", "dataset/cifar100/", 
-            //          "--batch_size", "16", 
-            //          "--vpt_type", "Deep", 
-            //          "--vit_type", "vit_base_patch16_224",
-            //          "--optimizer", "sgd",
-            //          "--debug",
-            //         //  "--sample_num=1000",
-            //          "--partition_method=hetero",
-            //          "--partition_alpha","0.1",
-            //          "--prompt_num","10",
-            //         ] 
+            "args": ["--method", "l_only", "--client_number", "4" ,"--thread_number", "2" ,
+                    "--client_sample","0.5",
+                    "--comm_round", "50", 
+                    "--lr", "5e-4", 
+                    "--epochs", "10",
+                     "--data_dir", "dataset/agnews/", 
+                     "--batch_size", "16", 
+                     "--optimizer", "sgd",
+                     "--debug",
+                    //  "--sample_num=1000",
+                     "--partition_method=hetero",
+                     "--partition_alpha","0.5",
+                    ] 
         }
     ]
 }

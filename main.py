@@ -11,6 +11,7 @@ from models.vpt import build_promptmodel
 from models.adapter import build_adapter_model
 from models.bias import build_bias_model
 from models.vpt_official import build_promptmodel as build_official
+from models.vlmo import build_vlmo
 
 import wandb
 
@@ -23,15 +24,16 @@ import time
 
 
 # methods
-import methods.scratch as scratch
-import methods.pretrain as pretrain
-import methods.prompt as prompt
-import methods.prompt_official as prompt_official
-import methods.adapter as adapter
-import methods.bias as bias
-import methods.shufflenet as shufflenet
+# import methods.scratch as scratch
+import methods.l_only as l_only
+# import methods.pretrain as pretrain
+# import methods.prompt as prompt
+# import methods.prompt_official as prompt_official
+# import methods.adapter as adapter
+# import methods.bias as bias
+# import methods.shufflenet as shufflenet
 import data_preprocessing.custom_multiprocess as cm
-from torchvision.models import shufflenet_v2_x0_5
+# from torchvision.models import shufflenet_v2_x0_5
 
 
 def add_args(parser):
@@ -146,6 +148,14 @@ def add_args(parser):
     parser.add_argument('--seed', type=int, default=1, metavar='N',
                     help='random seed')
 
+    parser.add_argument('--vocab_size', type=int, default=30522,
+                        help='Vocabulary size (default: 30522)')
+    parser.add_argument('--max_text_len', type=int, default=40,
+                        help='Maximum text length (default: 40)')
+    parser.add_argument('--drop_path_rate', type=float, default=0.1,
+                        help='Drop path rate (default: 0.1)')
+    parser.add_argument('--img_size', type=int, default=32,
+                        help='Image size (default: 32)')
     args = parser.parse_args()
 
     return args
@@ -236,9 +246,6 @@ if __name__ == "__main__":
         pass
     set_random_seed(args.seed)
 
-
-
-
     data_name = datapath2str(args.data_dir)
 
     save_path = './logs/{}_lr{:.0e}_e{}_c{}_{}_{}'.format(
@@ -249,123 +256,124 @@ if __name__ == "__main__":
         wandb.run.name = save_path.split(os.path.sep)[-1]
 
     # get data
-    img_size = 224 if '224' in args.vit_type else 384
+    # img_size = 224 if '224' in args.vit_type else 384
+
     train_data_num, test_data_num, train_data_global, test_data_global, data_local_num_dict, train_data_local_dict, test_data_local_dict,\
-         class_num = dl.load_partition_data(args.data_dir, args.partition_method, args.partition_alpha, args.client_number, args.batch_size,img_size, args.sample_num)
+         class_num = dl.load_partition_data(args.data_dir, args.partition_method, args.partition_alpha, args.client_number, args.batch_size,args.img_size, args.sample_num)
 
     mapping_dict = allocate_clients_to_threads(args)
     # pdb.set_trace()
     #init method and model type
     # NOTE Always use fedavg right now
-    if args.method=='scratch':
-        Server = scratch.Server
-        Client = scratch.Client
-        Model = timm.create_model
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':args.vit_type}
-        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':args.vit_type} for i in range(args.thread_number)]
-
-
-    elif args.method=='pretrain':
-        Server = pretrain.Server
-        Client = pretrain.Client
-        Model = timm.create_model
-        # (args.vit_type,num_classes= class_num, pretrained= True)
-        # server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model': Model, 'num_classes': class_num, 'writer':writer}
-        # client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-        #                     'client_map':mapping_dict[i], 'model': Model, 'num_classes': class_num, 'writer':writer} for i in range(args.thread_number)]
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':args.vit_type}
-        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':args.vit_type} for i in range(args.thread_number)]
-
-    elif args.method=='bias':
-        Server = bias.Server
-        Client = bias.Client
-        Model = build_bias_model
-
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':args.vit_type}
-        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':args.vit_type} for i in range(args.thread_number)]
-
-    elif args.method=='prompt':
-        Server = prompt.Server
-        Client = prompt.Client
-        basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
-
-        if 'mae' in args.ssl:
-            dict = torch.load(args.ssl)
-            basic_model.load_state_dict(dict['model'], strict=False)
-        elif 'moco' in args.ssl:
-            dict = torch.load(args.ssl)
-            # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
-            new_dict = {}
-            for k,v in dict['state_dict'].items():
-                if 'head' not in k:
-                    new_dict.update({k[7:]:v})
-
-            basic_model.load_state_dict(new_dict, strict=False)
-
-        Model = build_promptmodel
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
-        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]
-    elif args.method in ['prompt_official', 'head']:
-        if args.method == 'head':
-            args.prompt_num = 0
-        Server = prompt_official.Server
-        Client = prompt_official.Client
-        basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
-
-                
-        if 'mae' in args.ssl:
-            dict = torch.load(args.ssl)
-            basic_model.load_state_dict(dict['model'], strict=False)
-        elif 'moco' in args.ssl:
-            dict = torch.load(args.ssl)
-            # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
-            new_dict = {}
-            for k,v in dict['state_dict'].items():
-                if 'head' not in k:
-                    new_dict.update({k[7:]:v})
-
-            basic_model.load_state_dict(new_dict, strict=False)
-
-        Model = build_official
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
-        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]
-
-    elif args.method=='adapter':
-        Server = adapter.Server
-        Client = adapter.Client
-        basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
-
-                
-        if 'mae' in args.ssl:
-            dict = torch.load(args.ssl)
-            basic_model.load_state_dict(dict['model'], strict=False)
-        elif 'moco' in args.ssl:
-            dict = torch.load(args.ssl)
-            # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
-            new_dict = {}
-            for k,v in dict['state_dict'].items():
-                if 'head' not in k:
-                    new_dict.update({k[7:]:v})
-
-            basic_model.load_state_dict(new_dict, strict=False)
-
-            
-        Model = build_adapter_model
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
-        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]       
-    elif args.method=='shufflenet':
-        Server = shufflenet.Server
-        Client = shufflenet.Client
-        Model = shufflenet_v2_x0_5
+    if args.method=='l_only':
+        Server = l_only.Server
+        Client = l_only.Client
+        Model = build_vlmo
         server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)] 
+                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num, 'modality': 'l'} for i in range(args.thread_number)]
+
+
+    # elif args.method=='pretrain':
+    #     Server = pretrain.Server
+    #     Client = pretrain.Client
+    #     Model = timm.create_model
+    #     # (args.vit_type,num_classes= class_num, pretrained= True)
+    #     # server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model': Model, 'num_classes': class_num, 'writer':writer}
+    #     # client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+    #     #                     'client_map':mapping_dict[i], 'model': Model, 'num_classes': class_num, 'writer':writer} for i in range(args.thread_number)]
+    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':args.vit_type}
+    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':args.vit_type} for i in range(args.thread_number)]
+
+    # elif args.method=='bias':
+    #     Server = bias.Server
+    #     Client = bias.Client
+    #     Model = build_bias_model
+
+    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':args.vit_type}
+    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':args.vit_type} for i in range(args.thread_number)]
+
+    # elif args.method=='prompt':
+    #     Server = prompt.Server
+    #     Client = prompt.Client
+    #     basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
+
+    #     if 'mae' in args.ssl:
+    #         dict = torch.load(args.ssl)
+    #         basic_model.load_state_dict(dict['model'], strict=False)
+    #     elif 'moco' in args.ssl:
+    #         dict = torch.load(args.ssl)
+    #         # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
+    #         new_dict = {}
+    #         for k,v in dict['state_dict'].items():
+    #             if 'head' not in k:
+    #                 new_dict.update({k[7:]:v})
+
+    #         basic_model.load_state_dict(new_dict, strict=False)
+
+    #     Model = build_promptmodel
+    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
+    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+    #                         'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]
+    # elif args.method in ['prompt_official', 'head']:
+    #     if args.method == 'head':
+    #         args.prompt_num = 0
+    #     Server = prompt_official.Server
+    #     Client = prompt_official.Client
+    #     basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
+
+                
+    #     if 'mae' in args.ssl:
+    #         dict = torch.load(args.ssl)
+    #         basic_model.load_state_dict(dict['model'], strict=False)
+    #     elif 'moco' in args.ssl:
+    #         dict = torch.load(args.ssl)
+    #         # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
+    #         new_dict = {}
+    #         for k,v in dict['state_dict'].items():
+    #             if 'head' not in k:
+    #                 new_dict.update({k[7:]:v})
+
+    #         basic_model.load_state_dict(new_dict, strict=False)
+
+    #     Model = build_official
+    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
+    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+    #                         'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]
+
+    # elif args.method=='adapter':
+    #     Server = adapter.Server
+    #     Client = adapter.Client
+    #     basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
+
+                
+    #     if 'mae' in args.ssl:
+    #         dict = torch.load(args.ssl)
+    #         basic_model.load_state_dict(dict['model'], strict=False)
+    #     elif 'moco' in args.ssl:
+    #         dict = torch.load(args.ssl)
+    #         # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
+    #         new_dict = {}
+    #         for k,v in dict['state_dict'].items():
+    #             if 'head' not in k:
+    #                 new_dict.update({k[7:]:v})
+
+    #         basic_model.load_state_dict(new_dict, strict=False)
+
+            
+    #     Model = build_adapter_model
+    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
+    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+    #                         'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]       
+    # elif args.method=='shufflenet':
+    #     Server = shufflenet.Server
+    #     Client = shufflenet.Client
+    #     Model = shufflenet_v2_x0_5
+    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
+    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)] 
 
    
     else:

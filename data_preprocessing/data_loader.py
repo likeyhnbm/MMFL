@@ -1,3 +1,4 @@
+from functools import partial
 import logging
 
 import numpy as np
@@ -7,7 +8,7 @@ import torch.utils.data as data
 import torchvision.transforms as transforms
 
 from data_preprocessing.datasets import CIFAR_truncated, ImageFolder_custom,\
-ImageFolderTruncated, CifarReduced, ChestMINIST_truncated, ChestXray14, EuroSAT, PCAM_Reduced, PCAM_truncated, Resisc45
+ImageFolderTruncated, CifarReduced, ChestMINIST_truncated, ChestXray14, EuroSAT, PCAM_Reduced, PCAM_truncated, Resisc45, AG_NEWS
 from torchvision.datasets import ImageNet
 from PIL import Image
 
@@ -104,8 +105,8 @@ def _data_transforms_cifar(datadir,img_size=32):
     train_transform = transforms.Compose([
         transforms.ToPILImage(),
         transforms.Resize(img_size),
-        transforms.RandomCrop(img_size, padding=4),
-        transforms.RandomHorizontalFlip(),
+        # transforms.RandomCrop(img_size, padding=4),
+        # transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
     ])
@@ -320,6 +321,18 @@ def _data_transforms_pcam(datadir, img_size=1024):
 
     return train_transform, valid_transform
 
+def _data_transforms_agnews(datadir, max_length=40):
+    from transformers import BertTokenizer
+    
+    tokenizer = BertTokenizer.from_pretrained(
+        'bert-base-uncased', do_lower_case="uncased" in 'bert_base_uncased'
+    )
+    
+    train_transform = partial(tokenizer, padding='max_length', max_length=max_length, truncation=True)
+    valid_transform = partial(tokenizer, padding='max_length', max_length=max_length, truncation=True)
+
+    return train_transform, valid_transform
+
 
 def load_data(datadir, img_size=224, sample_num=-1):
     download = True
@@ -352,6 +365,9 @@ def load_data(datadir, img_size=224, sample_num=-1):
         train_transform, test_transform = _data_transforms_pcam(datadir, img_size)
         dl_obj = PCAM_truncated if sample_num == -1 else PCAM_Reduced
         download = False
+    elif 'agnews' in datadir:
+        train_transform, test_transform = _data_transforms_agnews(datadir)
+        dl_obj = AG_NEWS
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
         # dl_obj = ImageFolder_custom
@@ -359,6 +375,9 @@ def load_data(datadir, img_size=224, sample_num=-1):
     if 'imagenet' in datadir:
         test_ds = dl_obj(datadir, 'val', transform=test_transform)
         train_ds = test_ds
+    elif 'agnews' in datadir:
+        train_ds = dl_obj(datadir, is_train=True, transform=train_transform)
+        test_ds = dl_obj(datadir, is_train=False, transform=test_transform)
     else:
         if sample_num>-1:
             train_ds = dl_obj(datadir, sample_num,train=True, download=download, transform=train_transform)
@@ -370,6 +389,8 @@ def load_data(datadir, img_size=224, sample_num=-1):
         y_train, y_test = train_ds.target[train_ds.sample_idxs], test_ds.target
     elif 'imagenet' in datadir:
         y_train, y_test = np.array(train_ds.targets), np.array(test_ds.targets)
+    elif 'agnews' in datadir:
+        y_train, y_test = train_ds.targets, test_ds.targets
     else:
         y_train, y_test = train_ds.target, test_ds.target
 
@@ -467,6 +488,11 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
         workers=8
         persist=True 
         download=False
+    elif 'agnews' in datadir:
+        train_transform, test_transform = _data_transforms_agnews(datadir)
+        dl_obj = AG_NEWS
+        workers=8
+        persist=True 
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
         # dl_obj = ImageFolder_custom
@@ -476,12 +502,15 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
     if 'imagenet' in datadir:
         test_ds = dl_obj(datadir, 'val', transform=test_transform)
         train_ds = test_ds
+    elif 'agnews' in datadir:
+        train_ds = dl_obj(datadir, dataidxs=dataidxs, is_train=True, transform=train_transform)
+        test_ds = dl_obj(datadir, is_train=False, transform=test_transform)
     else:
         if sample_num>-1:
             train_ds = dl_obj(datadir, sample_num, dataidxs=dataidxs, train=True, transform=train_transform, download=download)
             test_ds = dl_obj(datadir, sample_num, train=False, transform=test_transform, download=True)
-            train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
-            test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
+            # train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
+            # test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
         else:
             train_ds = dl_obj(datadir, dataidxs=dataidxs, train=True, transform=train_transform, download=download)
             test_ds = dl_obj(datadir, train=False, transform=test_transform, download=True)
@@ -548,7 +577,7 @@ def load_partition_data(data_dir, partition_method, partition_alpha, client_numb
         if 'chestxray' in data_dir:
             train_data_local, test_data_local = get_dataloader_fast(data_dir, batch_size, batch_size, base_train, base_test, dataidxs, img_size, sample_num=sample_num)
         else:
-            train_data_local, test_data_local = get_dataloader(data_dir, batch_size, batch_size, dataidxs,img_size, sample_num=sample_num)
+            train_data_local, test_data_local = get_dataloader(data_dir, batch_size, batch_size, dataidxs, img_size, sample_num=sample_num)
         logging.info("client_idx = %d, batch_num_train_local = %d, batch_num_test_local = %d" % (
             client_idx, len(train_data_local), len(test_data_local)))
         train_data_local_dict[client_idx] = train_data_local

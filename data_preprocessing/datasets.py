@@ -11,6 +11,7 @@ from torchvision import transforms
 import os
 import pandas as pd
 import h5py
+import torchtext
 # from medmnist import ChestMNIST
 # import hub
 
@@ -624,3 +625,37 @@ class Resisc45(DatasetFolder):
             return len(self.samples)
         else:
             return len(self.dataidxs)
+        
+class AG_NEWS(data.Dataset):
+
+    def __init__(self, root, is_train=True, transform=None, dataidxs = None):
+        dataset = torchtext.datasets.AG_NEWS(root, split='train' if is_train else 'test')
+        self.targets = []
+        self.data = []
+        # print(type(dataset))
+        for (l, t) in dataset:  # len: 7600
+            self.targets.append(l)  # label: {1, 2, 3, 4} 4
+            self.data.append(t)  # sentence: raw sentence
+        self.targets = np.array(self.targets)
+        self.targets -= min(self.targets)  # label: {0, 1, 2, 3}  4
+
+        self.targets = np.array(self.targets)
+
+        self.transform = transform
+
+        if not dataidxs:
+            dataidxs = range(len(self.targets))
+
+        self.data_idx = dataidxs
+
+    def __getitem__(self, index):
+
+        output = self.data[self.data_idx[index]]
+
+        # if self.transform is not None:
+        output = self.transform(output)
+
+        return output['input_ids'], self.targets[self.data_idx[index]], output['attention_mask']
+
+    def __len__(self):
+        return len(self.data_idx)

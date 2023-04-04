@@ -38,6 +38,7 @@ class Base_Client():
         self.train_dataloader = None
         self.test_dataloader = None
         self.client_index = None
+        self.modality = client_dict['modality']
 
         
     def set_server(self,server):
