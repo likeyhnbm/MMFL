@@ -6,6 +6,9 @@ import random
 import data_preprocessing.data_loader as dl
 import argparse
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+
 import timm
 from models.vpt import build_promptmodel
 from models.adapter import build_adapter_model
@@ -23,9 +26,11 @@ from collections import defaultdict
 import time
 
 
+
+
 # methods
 # import methods.scratch as scratch
-import methods.l_only as l_only
+import methods.ours as ours
 # import methods.pretrain as pretrain
 # import methods.prompt as prompt
 # import methods.prompt_official as prompt_official
@@ -42,8 +47,10 @@ def add_args(parser):
     return a parser added with args required by fit
     """
     # Training settings
-    parser.add_argument('--method', type=str, default='scratch', metavar='M',
+    parser.add_argument('--method', type=str, default='ours', metavar='M',
                         help='baseline method')
+    parser.add_argument('--goal', type=str, default='run', metavar='M',
+                        help='goal of this run')
     parser.add_argument('--prompt_num', type=int, default=10, metavar='N',
                         help='prompt number for vpt') 
     parser.add_argument('--vit_type', type=str, default='vit_base_patch16_224_in21k' , metavar='N',
@@ -60,8 +67,10 @@ def add_args(parser):
     parser.add_argument('--model', type=str, default='vit', choices=['resnet18','resnet56','vit'], metavar='M',
                         help='neural network used in training')
 
-    parser.add_argument('--data_dir', type=str, default='data/cifar100',
-                        help='data directory: data/cifar100, data/cifar10, or a personal dataset')
+    parser.add_argument('--vision_data_dir', type=str, default='dataset/cifar100',
+                        help='data directory: dataset/cifar100 or a personal dataset')
+    parser.add_argument('--language_data_dir', type=str, default='dataset/agnews',
+                        help='data directory: dataset/agnews, or a personal dataset')
 
     parser.add_argument('--partition_method', type=str, default='hetero', metavar='N',
                         help='how to partition the dataset on local workers')
@@ -69,13 +78,20 @@ def add_args(parser):
     parser.add_argument('--partition_alpha', type=float, default=0.5, metavar='PA',
                         help='partition alpha (default: 0.5)')
 
-    parser.add_argument('--client_number', type=int, default=10, metavar='NN',
+    parser.add_argument('--vision_client_number', type=int, default=16, metavar='NN',
+                        help='number of workers in a distributed cluster')
+    parser.add_argument('--language_client_number', type=int, default=16, metavar='NN',
                         help='number of workers in a distributed cluster')
 
-    parser.add_argument('--batch_size', type=int, default=64, metavar='N',
+    parser.add_argument('--vision_batch_size', type=int, default=512, metavar='N',
+                        help='input batch size for training (default: 64)')
+    
+    parser.add_argument('--language_batch_size', type=int, default=512, metavar='N',
                         help='input batch size for training (default: 64)')
 
-    parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
+    parser.add_argument('--v_lr', type=float, default=0.001, metavar='LR',
+                        help='learning rate (default: 0.001)')
+    parser.add_argument('--l_lr', type=float, default=0.001, metavar='LR',
                         help='learning rate (default: 0.001)')
 
     parser.add_argument('--wd', help='weight decay parameter;', type=float, default=0.0001)
@@ -109,7 +125,7 @@ def add_args(parser):
                         help='Save client checkpoints each round')
     parser.add_argument('--thread_number', type=int, default=16, metavar='NN',
                         help='number of threads in a distributed cluster')
-    parser.add_argument('--client_sample', type=float, default=1.0, metavar='MT',
+    parser.add_argument('--client_sample', type=float, default=0.25, metavar='MT',
                         help='Fraction of clients to sample')
     parser.add_argument('--resolution_type', type=int, default=0,
                         help='Specifies the resolution list used')
@@ -156,6 +172,15 @@ def add_args(parser):
                         help='Drop path rate (default: 0.1)')
     parser.add_argument('--img_size', type=int, default=32,
                         help='Image size (default: 32)')
+    parser.add_argument('--patch_size', type=int, default=8,
+                        help='Patch size (default: 8)')
+    parser.add_argument('--warmup_modality', type=str, default='vl',
+                        help='warm up modality')
+    parser.add_argument('--warmup_rounds', type=int, default=10,
+                        help='warm up rounds')
+    parser.add_argument('--balanced', action='store_true', default=False,
+                help='balanced between modalities') 
+
     args = parser.parse_args()
 
     return args
@@ -179,6 +204,7 @@ def init_process(q, Client):
     ci = q.get()
     set_random_seed(ci[1].seed)
     client = Client(ci[0], ci[1])
+    logging.info("Initialized.")
     # client.server = 
 
 def run_clients(received_info):
@@ -191,8 +217,35 @@ def run_clients(received_info):
     #     logging.info('exiting')
     #     return None
 
+# def get_round_client_list(args):
+#     round_client_lists = []
+#     for i in range(args.warmup_rounds):
+#         if args.warmup_modality == 'vl':
+#             num_clients = int(args.client_number * args.client_sample)
+#             client_list = random.sample(range(args.client_number), num_clients)
+#         elif args.warmup_modality == 'v':
+#             num_clients = int(args.client_number * args.client_sample)
+#             client_list = random.sample(range(args.vision_client_number), num_clients)
+def get_round_modality(args):
+    round_modalities = []
+    for i in range(args.warmup_rounds):
+        round_modalities.append(args.warmup_modality)
+    for i in range(args.warmup_rounds, args.comm_round):
+        round_modalities.append('vl')
+
+    return round_modalities
+
+def is_modality(args, id, modality):
+    if modality == 'v':
+        return  id < args.vision_client_number
+    elif modality == 'l':
+        return  id > args.vision_client_number
+    elif modality == 'vl':
+        return True
+
 def allocate_clients_to_threads(args):
     mapping_dict = defaultdict(list)
+    round_modalities = get_round_modality(args)
     for round in range(args.comm_round):
         if args.client_sample<1.0:
             num_clients = int(args.client_number*args.client_sample)
@@ -200,10 +253,12 @@ def allocate_clients_to_threads(args):
         else:
             num_clients = args.client_number
             client_list = list(range(num_clients))
+        # client_list = [idx for idx in client_list if is_modality(args, idx, round_modalities[round])]
+        # num_clients = len(client_list)
         if num_clients % args.thread_number==0 and num_clients>0:
             clients_per_thread = int(num_clients/args.thread_number)
             for c, t in enumerate(range(0, num_clients, clients_per_thread)):
-                idxs = [client_list[x] for x in range(t, t+clients_per_thread)]
+                idxs = [client_list[x] for x in range(t, t+clients_per_thread) if is_modality(args, client_list[x], round_modalities[round]) ]
                 mapping_dict[c].append(idxs)
         else:
             logging.info("############ WARNING: Sampled client number not divisible by number of threads ##############")
@@ -225,6 +280,8 @@ def allocate_clients_to_threads(args):
 def datapath2str(path):
     if "cifar-100" in path or "cifar100" in path:
         return 'Cifar100'
+    elif "agnews" in path:
+        return 'AGNews'
     elif "CropDisease" in path:
         return 'CropDisease'
 
@@ -246,136 +303,89 @@ if __name__ == "__main__":
         pass
     set_random_seed(args.seed)
 
-    data_name = datapath2str(args.data_dir)
+    data_name = datapath2str(args.vision_data_dir) + '_' + datapath2str(args.language_data_dir)
 
-    save_path = './logs/{}_lr{:.0e}_e{}_c{}_{}_{}'.format(
-                        args.method, args.lr, args.epochs, args.client_number, data_name, time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
+    save_path = './logs/{}_lr{:.0e}_{:.0e}_e{}_c{}_{}_{}_{}'.format(
+                        args.method, args.v_lr,args.l_lr, args.epochs, args.vision_client_number, args.language_client_number, data_name, time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime()))
     args.save_path = save_path
+    
+    args.client_number = args.vision_client_number + args.language_client_number
+
     if not args.debug:
-        wandb.init(config=args,project='FedPrompt_new')
+        wandb.init(config=args,project='mmfl', entity='ucf_vision')
         wandb.run.name = save_path.split(os.path.sep)[-1]
 
     # get data
     # img_size = 224 if '224' in args.vit_type else 384
 
-    train_data_num, test_data_num, train_data_global, test_data_global, data_local_num_dict, train_data_local_dict, test_data_local_dict,\
-         class_num = dl.load_partition_data(args.data_dir, args.partition_method, args.partition_alpha, args.client_number, args.batch_size,args.img_size, args.sample_num)
+    if args.vision_client_number > 0:
+        v_train_data_num, v_test_data_num, v_train_data_global, v_test_data_global, v_data_local_num_dict, v_train_data_local_dict, v_test_data_local_dict,\
+            v_class_num = dl.load_partition_data(args.vision_data_dir, args.partition_method, args.partition_alpha, args.vision_client_number, args.vision_batch_size,args.img_size, args.sample_num)
+
+    else:
+        v_train_data_num, v_test_data_num, v_train_data_global, v_test_data_global, v_data_local_num_dict, v_train_data_local_dict, v_test_data_local_dict,\
+            v_class_num = None, None, None, None, None, None, None, None
+    if args.language_client_number > 0:
+        l_train_data_num, l_test_data_num, l_train_data_global, l_test_data_global, l_data_local_num_dict, l_train_data_local_dict, l_test_data_local_dict,\
+            l_class_num = dl.load_partition_data(args.language_data_dir, args.partition_method, args.partition_alpha, args.language_client_number, args.language_batch_size,args.img_size, args.sample_num)
+    else:
+        l_train_data_num, l_test_data_num, l_train_data_global, l_test_data_global, l_data_local_num_dict, l_train_data_local_dict, l_test_data_local_dict,\
+            l_class_num = None, None, None, None, None, None, None, None
+        
+    if args.vision_client_number == args.client_number:
+        train_data_local_dict = v_train_data_local_dict
+        test_data_local_dict = v_test_data_local_dict
+    elif args.language_client_number == args.client_number:
+        train_data_local_dict = l_train_data_local_dict
+        test_data_local_dict = l_test_data_local_dict
+    else:
+        l_train_data_local_dict = {k + args.vision_client_number: v for k,v in l_train_data_local_dict.items()}
+        train_data_local_dict = [v_train_data_local_dict, l_train_data_local_dict]
+        train_data_local_dict = {key: loader for dicts in train_data_local_dict for key, loader in dicts.items()}
+
+        l_test_data_local_dict = {k + args.vision_client_number: v for k,v in l_test_data_local_dict.items()}
+        test_data_local_dict = [v_test_data_local_dict, l_test_data_local_dict]
+        test_data_local_dict = {key: loader for dicts in test_data_local_dict for key, loader in dicts.items()}
+
+    args.v_class_num = v_class_num
+    args.l_class_num = l_class_num
+
+    args.v_train_data_num = v_train_data_num
+    args.l_train_data_num = l_train_data_num
+
 
     mapping_dict = allocate_clients_to_threads(args)
     # pdb.set_trace()
     #init method and model type
     # NOTE Always use fedavg right now
-    if args.method=='l_only':
-        Server = l_only.Server
-        Client = l_only.Client
+    if args.method=='ours':
+        Server = ours.Server
+        Client = ours.Client
         Model = build_vlmo
-        server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
+        server_dict = { 'v_train_data':v_train_data_global,
+                        'l_train_data':l_train_data_global,
+                        'v_test_data': v_test_data_global, 
+                        'l_test_data': l_test_data_global, 
+                        'model_type': Model, 
+                        'v_num_classes': v_class_num,
+                        'l_num_classes': l_class_num, 
+                        'v_client_number': args.vision_client_number,
+                        'l_client_number': args.language_client_number,
+                        }
+        # client_dict = []
+        # for i in range(args.thread_number):
+        #     for id in range(args.vision_client_number):
+        #         dict = {'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+        #                     'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': v_class_num}
+        #         client_dict.append(dict)
+        #     for id in range(args.vision_client_number):
+        #         dict = {'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+        #                     'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': l_class_num}
+        #         client_dict.append(dict)
+                 
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-                            'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num, 'modality': 'l'} for i in range(args.thread_number)]
+                            'client_map':mapping_dict[i], 'model_type': Model} for i in range(args.thread_number)]
 
-
-    # elif args.method=='pretrain':
-    #     Server = pretrain.Server
-    #     Client = pretrain.Client
-    #     Model = timm.create_model
-    #     # (args.vit_type,num_classes= class_num, pretrained= True)
-    #     # server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model': Model, 'num_classes': class_num, 'writer':writer}
-    #     # client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-    #     #                     'client_map':mapping_dict[i], 'model': Model, 'num_classes': class_num, 'writer':writer} for i in range(args.thread_number)]
-    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':args.vit_type}
-    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':args.vit_type} for i in range(args.thread_number)]
-
-    # elif args.method=='bias':
-    #     Server = bias.Server
-    #     Client = bias.Client
-    #     Model = build_bias_model
-
-    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num,'type':args.vit_type}
-    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num,'type':args.vit_type} for i in range(args.thread_number)]
-
-    # elif args.method=='prompt':
-    #     Server = prompt.Server
-    #     Client = prompt.Client
-    #     basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
-
-    #     if 'mae' in args.ssl:
-    #         dict = torch.load(args.ssl)
-    #         basic_model.load_state_dict(dict['model'], strict=False)
-    #     elif 'moco' in args.ssl:
-    #         dict = torch.load(args.ssl)
-    #         # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
-    #         new_dict = {}
-    #         for k,v in dict['state_dict'].items():
-    #             if 'head' not in k:
-    #                 new_dict.update({k[7:]:v})
-
-    #         basic_model.load_state_dict(new_dict, strict=False)
-
-    #     Model = build_promptmodel
-    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
-    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-    #                         'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]
-    # elif args.method in ['prompt_official', 'head']:
-    #     if args.method == 'head':
-    #         args.prompt_num = 0
-    #     Server = prompt_official.Server
-    #     Client = prompt_official.Client
-    #     basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
-
-                
-    #     if 'mae' in args.ssl:
-    #         dict = torch.load(args.ssl)
-    #         basic_model.load_state_dict(dict['model'], strict=False)
-    #     elif 'moco' in args.ssl:
-    #         dict = torch.load(args.ssl)
-    #         # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
-    #         new_dict = {}
-    #         for k,v in dict['state_dict'].items():
-    #             if 'head' not in k:
-    #                 new_dict.update({k[7:]:v})
-
-    #         basic_model.load_state_dict(new_dict, strict=False)
-
-    #     Model = build_official
-    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
-    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-    #                         'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]
-
-    # elif args.method=='adapter':
-    #     Server = adapter.Server
-    #     Client = adapter.Client
-    #     basic_model = timm.create_model(args.vit_type, num_classes= class_num, pretrained= True)
-
-                
-    #     if 'mae' in args.ssl:
-    #         dict = torch.load(args.ssl)
-    #         basic_model.load_state_dict(dict['model'], strict=False)
-    #     elif 'moco' in args.ssl:
-    #         dict = torch.load(args.ssl)
-    #         # dict = { k[7:]:v for k,v in dict['state_dict'].items()}
-    #         new_dict = {}
-    #         for k,v in dict['state_dict'].items():
-    #             if 'head' not in k:
-    #                 new_dict.update({k[7:]:v})
-
-    #         basic_model.load_state_dict(new_dict, strict=False)
-
-            
-    #     Model = build_adapter_model
-    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num, 'basic_model':basic_model}
-    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-    #                         'client_map':mapping_dict[i], 'model_type': Model, 'basic_model':basic_model, 'num_classes': class_num} for i in range(args.thread_number)]       
-    # elif args.method=='shufflenet':
-    #     Server = shufflenet.Server
-    #     Client = shufflenet.Client
-    #     Model = shufflenet_v2_x0_5
-    #     server_dict = {'train_data':train_data_global, 'test_data': test_data_global, 'model_type': Model, 'num_classes': class_num}
-    #     client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
-    #                         'client_map':mapping_dict[i], 'model_type': Model, 'num_classes': class_num} for i in range(args.thread_number)] 
-
-   
     else:
         raise ValueError('Invalid --method chosen! Please choose from availible methods.')
 
@@ -412,7 +422,7 @@ if __name__ == "__main__":
         if args.debug:
             time.sleep(10 * (args.client_number * args.client_sample / args.thread_number))
         else:
-            time.sleep(150 * (args.client_number * args.client_sample / args.thread_number)) #  Allow time for threads to start up
+            time.sleep(60 * (args.client_number * args.client_sample / args.thread_number)) #  Allow time for threads to start up
         for r in range(args.comm_round):
             logging.info('************** Round: {} ***************'.format(r))
             round_start = time.time()

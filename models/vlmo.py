@@ -365,7 +365,7 @@ class MultiWayTransformer(nn.Module):
             x = x + self.pos_embed
         x = self.pos_drop(x)
 
-        x_mask = torch.ones(x.shape[0], x.shape[1])
+        x_mask = torch.ones(x.shape[0], x.shape[1]).to(x.device)
 
         return x, x_mask
 # VLMo small/p16 for cifar
@@ -413,15 +413,16 @@ def vlmo_base_plus_patch16(pretrained=False, **kwargs):
 
 def build_vlmo(args):
 
-    v_num_class = 100
-    l_num_class = 4
+    v_num_class = args.v_class_num
+    l_num_class = args.l_class_num
 
-    if 'cifar100' in args.data_dir:
+    if 'cifar100' in args.vision_data_dir:
         v_num_class = 100
-    if 'agnews' in args.data_dir:
+    if 'agnews' in args.language_data_dir:
         l_num_class = 4
 
     model = VLMo(img_size=args.img_size,
+                 patch_size=args.patch_size,
                  v_num_classes=v_num_class, 
                  l_num_classes=l_num_class, 
                  vocab_size=args.vocab_size, 
@@ -431,10 +432,11 @@ def build_vlmo(args):
     return model
 
 class VLMo(nn.Module):
-    def __init__(self, img_size, v_num_classes=100, l_num_classes=4, vocab_size=30522, max_text_len=40, drop_path_rate=0.1, config=None) -> None:
+    def __init__(self, img_size, patch_size=8, v_num_classes=100, l_num_classes=4, vocab_size=30522, max_text_len=40, drop_path_rate=0.1, config=None) -> None:
         super().__init__()
 
         self.img_size = img_size
+        self.patch_size = patch_size
         # self.transformer = create_model(
         #     model_str,
         #     img_size=self.img_size,
@@ -447,7 +449,7 @@ class VLMo(nn.Module):
         # )
 
         self.transformer = MultiWayTransformer(
-            img_size=img_size, patch_size=16, embed_dim=384, depth=7, num_heads=12, 
+            img_size=img_size, patch_size=patch_size, embed_dim=384, depth=7, num_heads=12, 
             mlp_ratio=4, qkv_bias=True, vlffn_start_layer_index=5, 
             norm_layer=partial(nn.LayerNorm, eps=1e-6), drop_path_rate=drop_path_rate, config=config, max_text_len=max_text_len)
 
@@ -614,6 +616,37 @@ class VLMo(nn.Module):
             cls_feats = cls_feats / cls_feats.norm(dim=-1, keepdim=True)
 
             return cls_feats
+        
+    def state_dict(self, modality='vl'):
+        dicts = {}
+        v_params = ['imag', 'patch_embed', 'pos_embed', 'v_head', 'cls_token']
+        l_params = ['text', 'l_head']
+
+        if modality == 'v':
+            for k, p in self.named_parameters():
+                if all([i not in k for i in l_params]):
+                    dicts.update({k: p})
+        elif modality == 'l':
+            for k, p in self.named_parameters():
+                # if 'imag' not in k and 'patch_embed' not in k and 'v_head' not in k and 'cls_token' not in k:
+                if all([i not in k for i in v_params]):
+                    dicts.update({k: p})
+        elif modality == 'vl':
+            return super().state_dict()
+        else:
+            raise 'Unsupported modality'
+        
+        return dicts
+    
+    def load_state_dict(self, state_dict, strict=False):
+        return super().load_state_dict(state_dict, strict=False)
+
+
+
+
+
+
+
 
     # def infer(
     #     self,

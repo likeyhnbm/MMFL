@@ -35,6 +35,30 @@ def record_net_data_stats(y_train, net_dataidx_map):
     logging.debug('Data statistics: %s' % str(net_cls_counts))
     return net_cls_counts
 
+def caption_collate_fn(data):
+    """Build mini-batch tensors from a list of (image, sentence) tuples.
+    Args:
+      data: list of (image, sentence) tuple.
+        - image: torch tensor of shape (3, 256, 256) or (?, 3, 256, 256).
+        - sentence: torch tensor of shape (?); variable length.
+
+    Returns:
+      targets: torch tensor of shape (batch_size, padded_length).
+      lengths: list; valid length for each padded sentence.
+    """
+    # Sort a data list by sentence length
+    # print(data[0])
+    input_ids = [i[0] for i in data]
+    labels = [i[1] for i in data]
+    masks = [i[2] for i in data]
+
+    input_ids = torch.Tensor(np.array(input_ids)).int()
+    labels = torch.Tensor(np.array(labels)).long()
+    masks = torch.Tensor(np.array(masks)).long()
+
+    
+    # print(labels)
+    return input_ids, labels, masks
 
 class Cutout(object):
     def __init__(self, length):
@@ -505,18 +529,21 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
     elif 'agnews' in datadir:
         train_ds = dl_obj(datadir, dataidxs=dataidxs, is_train=True, transform=train_transform)
         test_ds = dl_obj(datadir, is_train=False, transform=test_transform)
+
+        train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist, collate_fn=caption_collate_fn)
+        test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist, collate_fn=caption_collate_fn)
     else:
         if sample_num>-1:
             train_ds = dl_obj(datadir, sample_num, dataidxs=dataidxs, train=True, transform=train_transform, download=download)
             test_ds = dl_obj(datadir, sample_num, train=False, transform=test_transform, download=True)
-            # train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
-            # test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
+            train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
+            test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
         else:
             train_ds = dl_obj(datadir, dataidxs=dataidxs, train=True, transform=train_transform, download=download)
             test_ds = dl_obj(datadir, train=False, transform=test_transform, download=True)
     
-    train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
-    test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
+            train_dl = data.DataLoader(dataset=train_ds, batch_size=train_bs, shuffle=True, drop_last=False, num_workers=workers, persistent_workers=persist)
+            test_dl = data.DataLoader(dataset=test_ds, batch_size=test_bs, shuffle=False, drop_last=False, num_workers=workers, persistent_workers=persist)
 
     return train_dl, test_dl
 

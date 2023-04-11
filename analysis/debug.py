@@ -36,7 +36,7 @@ import methods.fedprox as fedprox
 import methods.moon as moon
 import methods.feddepth as feddepth
 import methods.mixup as mixup
-import methods.ours as ours
+import methods.fedalign as fedalign
 import methods.scratch as scratch
 import methods.pretrain as pretrain
 import methods.prompt as prompt
