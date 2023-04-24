@@ -6,6 +6,7 @@ from torch.nn.utils import clip_grad_norm_
 # from torch.utils.tensorboard import SummaryWriter
 # import writer
 import numpy as np
+from copy import deepcopy
 
 
 def get_noise_multiplier(epsilon, delta, max_grad_norm):
@@ -78,12 +79,12 @@ class Base_Client():
                 self.noise_multiplier = get_noise_multiplier(self.args.epsilon, self.args.delta, self.args.max_grad_norm)
                 # logging.info('noise_multiplier:{}'.format(self.noise_multiplier))
 
-            weights = self.train() #if not self.args.dp else self.dp_train()
+            weights, loss = self.train() #if not self.args.dp else self.dp_train()
             acc = self.test()
             # self.model.to('cpu')
             with torch.cuda.device(self.device):
                 torch.cuda.empty_cache()
-            client_results.append({'weights':weights, 'num_samples':num_samples,'acc':acc, 'client_index':self.client_index, 'modality':self.modality})
+            client_results.append({'weights':deepcopy(weights), 'num_samples':num_samples,'acc':acc, 'client_index':self.client_index, 'modality':self.modality, 'loss': loss})
             if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None:
                 self.train_dataloader._iterator._shutdown_workers()
         # except:
@@ -133,7 +134,8 @@ class Base_Client():
                                                                             epoch, sum(epoch_loss) / len(epoch_loss), current_process()._identity[0], self.client_map[self.round]))
         weights = self.model.cpu().state_dict()
         # images, labels = images.to('cpu'), labels.to('cpu')
-        return weights
+        loss = sum(epoch_loss) / len(epoch_loss)
+        return weights, loss
     
     def test(self):
         self.model.to(self.device)
@@ -292,37 +294,72 @@ class Base_Server():
         # with open('{}/out.log'.format(self.save_path), 'a+') as out_file:
         #     out_file.write(out_str)
 
+    def get_losses_balanced_scale(self, client_info):
+        losses = {'v':[], 'l': []}
+        for c in client_info:
+            losses[c['modality']].append(c['loss'])
+        
+        loss_scale = (sum(losses['l']) / len(losses['l'])) / (sum(losses['v']) / len(losses['v']))
+
+        return np.log(loss_scale) 
+    
+    def get_coeff(self, client_info):
+
+        v_num = sum([x['num_samples'] for x in client_info if x['modality'] == 'v'])
+        l_num = sum([x['num_samples'] for x in client_info if x['modality'] == 'v'])
+
+        total_num = 2 * l_num if self.args.balanced else sum([x['num_samples'] for x in client_info])
+
+        num_scale = l_num / v_num if self.args.balanced else 1
+        loss_scale = self.get_losses_balanced_scale(client_info) if self.args.loss_balanced else 1
+
+        coeffs = []
+        for c in client_info:
+            w = c['num_samples'] / total_num * num_scale * loss_scale if c['modality'] == 'v' else c['num_samples'] / total_num
+            coeffs.append(w)
+        
+        coeffs = np.array(coeffs)
+        coeffs = coeffs / sum(coeffs)
+
+        return coeffs
+        
+
+
+
     def operations(self, client_info):
         client_info.sort(key=lambda tup: tup['client_index'])
         client_sd = [c['weights'] for c in client_info]
+        
+        cw = self.get_coeff(client_info)
         # cw = [c['num_samples']/sum([x['num_samples'] for x in client_info]) for c in client_info]
         ssd = self.model.state_dict()
         for key in ssd:
-            value = 0
-            key_sample = 0
-            for i, sd in enumerate(client_sd):
-                if key in sd.keys():
-                    if self.args.balanced:
-                        if client_info[i]['modality'] == 'v':
-                            key_sample += client_info[i]['num_samples'] * self.args.l_train_data_num / self.args.v_train_data_num
-                        else:
-                            key_sample += client_info[i]['num_samples']
-                    else:
-                        key_sample += client_info[i]['num_samples']
+            ssd[key] = sum([sd[key]*cw[i] for i, sd in enumerate(client_sd)])
+        #     value = 0
+        #     key_sample = 0
+        #     for i, sd in enumerate(client_sd):
+        #         if key in sd.keys():
+        #             if self.args.balanced:
+        #                 if client_info[i]['modality'] == 'v':
+        #                     key_sample += client_info[i]['num_samples'] * self.args.l_train_data_num / self.args.v_train_data_num
+        #                 else:
+        #                     key_sample += client_info[i]['num_samples']
+        #             else:
+        #                 key_sample += client_info[i]['num_samples']
 
-            for i, sd in enumerate(client_sd):
-                if key in sd.keys():
-                    # value += sd[key] * (client_info[i]['num_samples'] / key_sample)
-                    if self.args.balanced:
-                        if client_info[i]['modality'] == 'v':
-                            value += sd[key] * (client_info[i]['num_samples'] / key_sample) * self.args.l_train_data_num / self.args.v_train_data_num
-                        else:
-                            value += sd[key] * (client_info[i]['num_samples'] / key_sample)
-                    else:
-                        value += sd[key] * (client_info[i]['num_samples'] / key_sample)
+        #     for i, sd in enumerate(client_sd):
+        #         if key in sd.keys():
+        #             # value += sd[key] * (client_info[i]['num_samples'] / key_sample)
+        #             if self.args.balanced:
+        #                 if client_info[i]['modality'] == 'v':
+        #                     value += sd[key] * (client_info[i]['num_samples'] / key_sample) * self.args.l_train_data_num / self.args.v_train_data_num
+        #                 else:
+        #                     value += sd[key] * (client_info[i]['num_samples'] / key_sample)
+        #             else:
+        #                 value += sd[key] * (client_info[i]['num_samples'] / key_sample)
             
-            ssd[key] = value
-            # ssd[key] = sum([sd[key]*cw[i] for i, sd in enumerate(client_sd)])
+        #     ssd[key] = value
+            
         self.model.load_state_dict(ssd)
         if self.args.save_client:
             for client in client_info:

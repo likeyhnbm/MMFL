@@ -180,6 +180,8 @@ def add_args(parser):
                         help='warm up rounds')
     parser.add_argument('--balanced', action='store_true', default=False,
                 help='balanced between modalities') 
+    parser.add_argument('--loss_balanced', action='store_true', default=False,
+                help='balanced between modalities') 
 
     args = parser.parse_args()
 
