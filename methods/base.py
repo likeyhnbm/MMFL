@@ -59,6 +59,11 @@ class Base_Client():
             self.load_client_state_dict(received_info)
             self.train_dataloader = self.train_data[client_idx]
             self.test_dataloader = self.test_data[client_idx]
+            if self.round >= self.args.warmup_rounds and self.round < (self.args.warmup_rounds + self.args.freeze_rounds):
+                self.model.freeze_attn()
+            else:
+                self.model.unfreeze_attn()
+
             if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None and self.train_dataloader._iterator._shutdown:
                 self.train_dataloader._iterator = self.train_dataloader._get_iterator()
             self.client_index = client_idx

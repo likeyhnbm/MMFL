@@ -641,6 +641,15 @@ class VLMo(nn.Module):
     def load_state_dict(self, state_dict, strict=False):
         return super().load_state_dict(state_dict, strict=False)
 
+    def freeze_attn(self):
+        for k, p in self.named_parameters():
+            if 'attn' in k:
+                p.requires_grad = False
+    
+    def unfreeze_attn(self):
+        for k, p in self.named_parameters():
+            if 'attn' in k:
+                p.requires_grad = True
 
 
 

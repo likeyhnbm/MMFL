@@ -178,6 +178,10 @@ def add_args(parser):
                         help='warm up modality')
     parser.add_argument('--warmup_rounds', type=int, default=10,
                         help='warm up rounds')
+    parser.add_argument('--freeze_modality', type=str, default='vl',
+                        help='warm up modality')
+    parser.add_argument('--freeze_rounds', type=int, default=0,
+                        help='warm up rounds')
     parser.add_argument('--balanced', action='store_true', default=False,
                 help='balanced between modalities') 
     parser.add_argument('--loss_balanced', action='store_true', default=False,
@@ -232,7 +236,9 @@ def get_round_modality(args):
     round_modalities = []
     for i in range(args.warmup_rounds):
         round_modalities.append(args.warmup_modality)
-    for i in range(args.warmup_rounds, args.comm_round):
+    for i in range(args.freeze_rounds):
+        round_modalities.append(args.freeze_modality)
+    for i in range(args.warmup_rounds + args.freeze_rounds, args.comm_round):
         round_modalities.append('vl')
 
     return round_modalities
