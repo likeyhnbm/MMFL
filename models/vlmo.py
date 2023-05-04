@@ -413,13 +413,17 @@ def vlmo_base_plus_patch16(pretrained=False, **kwargs):
 
 def build_vlmo(args):
 
-    v_num_class = args.v_class_num
-    l_num_class = args.l_class_num
+    v_num_class = args.v_class_num or 100
+    l_num_class = args.l_class_num or 4
+
+    # print(v_num_class, l_num_class)
 
     if 'cifar100' in args.vision_data_dir:
         v_num_class = 100
     if 'agnews' in args.language_data_dir:
         l_num_class = 4
+    # if 'mtsamples' in args.language_data_dir:
+    #     l_num_class = 4
 
     model = VLMo(img_size=args.img_size,
                  patch_size=args.patch_size,

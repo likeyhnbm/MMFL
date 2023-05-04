@@ -303,10 +303,14 @@ class Base_Server():
         losses = {'v':[], 'l': []}
         for c in client_info:
             losses[c['modality']].append(c['loss'])
-        
-        loss_scale = (sum(losses['l']) / len(losses['l'])) / (sum(losses['v']) / len(losses['v']))
 
-        return np.log(loss_scale) 
+        v_scale = (1 / (2 * np.var(losses['v'])))
+        l_scale = (1 / (2 * np.var(losses['l'])))
+        
+        # loss_scale = (sum(losses['l']) / len(losses['l'])) / (sum(losses['v']) / len(losses['v']))
+        loss_scale = v_scale / l_scale
+
+        return loss_scale 
     
     def get_coeff(self, client_info):
 

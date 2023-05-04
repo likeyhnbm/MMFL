@@ -12,7 +12,7 @@ import os
 import pandas as pd
 import h5py
 import torchtext
-# from medmnist import ChestMNIST
+from medmnist import OrganAMNIST, ChestMNIST, PathMNIST
 # import hub
 
 logging.basicConfig()
@@ -46,51 +46,144 @@ def default_loader(path):
         return pil_loader(path)
 
 
-# class ChestMINIST_truncated(ChestMNIST):
-class ChestMINIST_truncated:
-    pass
-    
-#     def __init__(self, root, dataidxs=None, train=True, transform=None, target_transform=None, download=False):
+class OrganAMNIST_truncated(OrganAMNIST):    
+    def __init__(self, root, dataidxs=None, train=True, transform=None, target_transform=None, download=False):
 
-#         self.split = 'train' if train else 'test'
-#         super(ChestMINIST_truncated,self).__init__(root=root, split=self.split, 
-#                                 transform=transform, target_transform=target_transform, download=download)
-#         self.dataidxs = dataidxs
-#         self.train = train
+        self.split = 'train' if train else 'test'
+        super(OrganAMNIST_truncated, self).__init__(root=root, split=self.split, 
+                                transform=transform, target_transform=target_transform, download=download)
+        self.dataidxs = dataidxs
+        self.train = train
 
-#         if self.dataidxs is not None:
-#             self.imgs = self.imgs[self.dataidxs]
-#             self.labels = self.labels[self.dataidxs]
+        if self.dataidxs is not None:
+            self.imgs = self.imgs[self.dataidxs]
+            self.labels = self.labels[self.dataidxs]
 
-#         self.data = self.imgs
-#         self.target = self.labels
+        self.data = self.imgs
+        self.target = self.labels
 
-#     def truncate_channel(self, index):
-#         for i in range(index.shape[0]):
-#             gs_index = index[i]
-#             self.imgs[gs_index, :, :, 1] = 0.0
-#             self.imgs[gs_index, :, :, 2] = 0.0
+    def truncate_channel(self, index):
+        for i in range(index.shape[0]):
+            gs_index = index[i]
+            self.imgs[gs_index, :, :, 1] = 0.0
+            self.imgs[gs_index, :, :, 2] = 0.0
 
-#     def __getitem__(self, index):
-#         """
-#         Args:
-#             index (int): Index
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
 
-#         Returns:
-#             tuple: (image, target) where target is index of the target class.
-#         """
-#         img, target = self.imgs[index], self.labels[index]
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        img, target = self.imgs[index], self.labels[index]
 
-#         if self.transform is not None:
-#             img = self.transform(img)
+        img =  np.repeat(img[:, :, np.newaxis], 3, axis=2) if len(img.shape)==2 else img
+        target = target[0]
 
-#         if self.target_transform is not None:
-#             target = self.target_transform(target)
+        if self.transform is not None:
+            img = self.transform(img)
 
-#         return img, target
+        if self.target_transform is not None:
+            target = self.target_transform(target)
 
-#     def __len__(self):
-#         return len(self.imgs)        
+        return img, target
+
+    def __len__(self):
+        return len(self.imgs)        
+
+
+class ChestMNIST_truncated(ChestMNIST):    
+    def __init__(self, root, dataidxs=None, train=True, transform=None, target_transform=None, download=False):
+
+        self.split = 'train' if train else 'test'
+        super(ChestMNIST_truncated, self).__init__(root=root, split=self.split, 
+                                transform=transform, target_transform=target_transform, download=download)
+        self.dataidxs = dataidxs
+        self.train = train
+
+        if self.dataidxs is not None:
+            self.imgs = self.imgs[self.dataidxs]
+            self.labels = self.labels[self.dataidxs]
+
+        self.data = self.imgs
+        self.target = self.labels
+
+    def truncate_channel(self, index):
+        for i in range(index.shape[0]):
+            gs_index = index[i]
+            self.imgs[gs_index, :, :, 1] = 0.0
+            self.imgs[gs_index, :, :, 2] = 0.0
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        img, target = self.imgs[index], self.labels[index]
+
+        img =  np.repeat(img[:, :, np.newaxis], 3, axis=2) if len(img.shape)==2 else img
+        target = np.argmax(target)
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return img, target
+
+    def __len__(self):
+        return len(self.imgs)
+
+class PathMNIST_truncated(PathMNIST):    
+    def __init__(self, root, dataidxs=None, train=True, transform=None, target_transform=None, download=False):
+
+        self.split = 'train' if train else 'test'
+        super(PathMNIST_truncated, self).__init__(root=root, split=self.split, 
+                                transform=transform, target_transform=target_transform, download=download)
+        self.dataidxs = dataidxs
+        self.train = train
+
+        if self.dataidxs is not None:
+            self.imgs = self.imgs[self.dataidxs]
+            self.labels = self.labels[self.dataidxs]
+
+        self.data = self.imgs
+        self.target = self.labels
+
+    def truncate_channel(self, index):
+        for i in range(index.shape[0]):
+            gs_index = index[i]
+            self.imgs[gs_index, :, :, 1] = 0.0
+            self.imgs[gs_index, :, :, 2] = 0.0
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        img, target = self.imgs[index], self.labels[index]
+
+        img =  np.repeat(img[:, :, np.newaxis], 3, axis=2) if len(img.shape)==2 else img
+        target = target[0]
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return img, target
+
+    def __len__(self):
+        return len(self.imgs)
 
 class ChestXray14_Fast(VisionDataset):
     
@@ -659,3 +752,85 @@ class AG_NEWS(data.Dataset):
 
     def __len__(self):
         return len(self.data_idx)
+
+# class MTSamples(Dataset):
+
+#     dirname = 'data/mtsamples'
+#     filename = 'mtsamples.csv'
+
+#     @classmethod
+#     def splits(cls, text_field, label_field, root='.data', train=None, **kwargs):
+#         if train is None:
+#             train = cls.download(root)
+
+#         return cls(train, text_field, label_field, **kwargs)
+
+#     def __init__(self, path, text_field, label_field, **kwargs):
+#         fields = [('text', text_field), ('label', label_field)]
+#         examples = []
+
+#         df = pd.read_csv(path)
+#         for _, row in df.iterrows():
+#             text = row['transcription']
+#             label = row['medical_specialty']
+#             examples.append(Example.fromlist([text, label], fields))
+
+#         super(MTSamples, self).__init__(examples, fields, **kwargs)    
+
+
+class MTSamples(data.Dataset):
+
+    def __init__(self, root, is_train=True, transform=None, dataidxs = None):
+        # dataset = torchtext.datasets.AG_NEWS(root, split='train' if is_train else 'test')
+
+        split = 'train' if is_train else 'test'
+        df = pd.read_csv(os.path.join(root, '{}.csv'.format(split)))
+
+        
+        self.targets = df['medical_specialty'].to_list()
+        self.data = df['transcription'].to_list()
+        # print(type(dataset))
+        # 
+        self.targets = np.array(self.targets)
+        # self.targets -= min(self.targets)  # label: {0, 1, 2, 3}  4
+
+        self.targets = np.array(self.targets)
+
+        self.transform = transform
+
+        if not dataidxs:
+            dataidxs = range(len(self.targets))
+
+        self.data_idx = dataidxs
+
+    def __getitem__(self, index):
+
+        output = self.data[self.data_idx[index]]
+
+        # if self.transform is not None:
+        output = self.transform(output)
+
+        return output['input_ids'], self.targets[self.data_idx[index]], output['attention_mask']
+
+    def __len__(self):
+        return len(self.data_idx)
+    
+
+
+if __name__ == '__main__':
+    from functools import partial
+    from transformers import BertTokenizer
+    tokenizer = BertTokenizer.from_pretrained(
+        'bert-base-uncased', do_lower_case="uncased" in 'bert_base_uncased'
+    )
+    
+    train_transform = partial(tokenizer, padding='max_length', max_length=10, truncation=True)
+
+    dataset = MTSamples('dataset/mtsamples', True, train_transform)
+    # print(dataset[0])
+    for i in range(len(dataset)):
+        # if type(dataset.data[i])!='str':
+        try:
+            dataset[i]
+        except:
+            print(dataset.data[i])

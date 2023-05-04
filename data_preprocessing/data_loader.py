@@ -8,7 +8,7 @@ import torch.utils.data as data
 import torchvision.transforms as transforms
 
 from data_preprocessing.datasets import CIFAR_truncated, ImageFolder_custom,\
-ImageFolderTruncated, CifarReduced, ChestMINIST_truncated, ChestXray14, EuroSAT, PCAM_Reduced, PCAM_truncated, Resisc45, AG_NEWS
+ImageFolderTruncated, CifarReduced, OrganAMNIST_truncated, ChestXray14, EuroSAT, PCAM_Reduced, PCAM_truncated, Resisc45, AG_NEWS, ChestMNIST_truncated, PathMNIST_truncated, MTSamples
 from torchvision.datasets import ImageNet
 from PIL import Image
 
@@ -261,14 +261,30 @@ def _data_transforms_prompt(datadir):
 
     return train_transform, valid_transform
 
-def _data_transforms_chestminist(datadir, img_size=28):
+def _data_transforms_organamnist(datadir, img_size=28):
 
-    train_transform = valid_transform = transforms.Compose([
-    transforms.Resize(img_size),
-    transforms.RandomCrop(img_size, padding=4),
-    transforms.RandomHorizontalFlip(),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[.5], std=[.5])
+    train_transform = transforms.Compose([
+        # transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.size(0)==1 else x),
+        transforms.ToPILImage(),
+        # transforms.ConvertMode(mode='RGB'),
+        # transforms.Lambda(lambda x: Image.convert('RGB')),
+        transforms.Resize(img_size),
+        transforms.RandomCrop(img_size, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[.5], std=[.5])
+    ])
+
+    valid_transform = transforms.Compose([
+        # transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.size(0)==1 else x),
+        transforms.ToPILImage(),
+        # transforms.ConvertMode(mode='RGB'),
+        # transforms.Lambda(lambda x: Image.convert('RGB')),
+        transforms.Resize(img_size),
+        # transforms.RandomCrop(img_size, padding=4),
+        # transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[.5], std=[.5])
     ])
    
     return train_transform, valid_transform
@@ -373,9 +389,15 @@ def load_data(datadir, img_size=224, sample_num=-1):
     elif 'CropDisease' in datadir:
         train_transform, test_transform = _data_transforms_prompt(datadir)
         dl_obj = ImageFolder_custom
+    elif 'organamnist' in datadir:
+        train_transform, test_transform = _data_transforms_organamnist(datadir, img_size=img_size)
+        dl_obj = OrganAMNIST_truncated
     elif 'chestmnist' in datadir:
-        train_transform, test_transform = _data_transforms_chestminist(datadir)
-        dl_obj = ChestMINIST_truncated
+        train_transform, test_transform = _data_transforms_organamnist(datadir, img_size=img_size)
+        dl_obj = ChestMNIST_truncated
+    elif 'pathmnist' in datadir:
+        train_transform, test_transform = _data_transforms_organamnist(datadir, img_size=img_size)
+        dl_obj = PathMNIST_truncated
     elif 'chestxray' in datadir:
         train_transform, test_transform = _data_transforms_cheestxray(datadir, img_size)
         dl_obj = ChestXray14
@@ -392,6 +414,9 @@ def load_data(datadir, img_size=224, sample_num=-1):
     elif 'agnews' in datadir:
         train_transform, test_transform = _data_transforms_agnews(datadir)
         dl_obj = AG_NEWS
+    elif 'mtsamples' in datadir:
+        train_transform, test_transform = _data_transforms_agnews(datadir)
+        dl_obj = MTSamples
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
         # dl_obj = ImageFolder_custom
@@ -400,6 +425,9 @@ def load_data(datadir, img_size=224, sample_num=-1):
         test_ds = dl_obj(datadir, 'val', transform=test_transform)
         train_ds = test_ds
     elif 'agnews' in datadir:
+        train_ds = dl_obj(datadir, is_train=True, transform=train_transform)
+        test_ds = dl_obj(datadir, is_train=False, transform=test_transform)
+    elif 'mtsamples' in datadir:
         train_ds = dl_obj(datadir, is_train=True, transform=train_transform)
         test_ds = dl_obj(datadir, is_train=False, transform=test_transform)
     else:
@@ -413,7 +441,7 @@ def load_data(datadir, img_size=224, sample_num=-1):
         y_train, y_test = train_ds.target[train_ds.sample_idxs], test_ds.target
     elif 'imagenet' in datadir:
         y_train, y_test = np.array(train_ds.targets), np.array(test_ds.targets)
-    elif 'agnews' in datadir:
+    elif 'agnews' in datadir or 'mtsamples' in datadir:
         y_train, y_test = train_ds.targets, test_ds.targets
     else:
         y_train, y_test = train_ds.target, test_ds.target
@@ -486,9 +514,19 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
         dl_obj = ImageFolder_custom
         workers=16
         persist=False
+    elif 'organamnist' in datadir:
+        train_transform, test_transform = _data_transforms_organamnist(datadir, img_size)
+        dl_obj = OrganAMNIST_truncated
+        workers=8
+        persist=True
     elif 'chestmnist' in datadir:
-        train_transform, test_transform = _data_transforms_chestminist(datadir, img_size)
-        dl_obj = ChestMINIST_truncated
+        train_transform, test_transform = _data_transforms_organamnist(datadir, img_size)
+        dl_obj = ChestMNIST_truncated
+        workers=8
+        persist=True
+    elif 'pathmnist' in datadir:
+        train_transform, test_transform = _data_transforms_organamnist(datadir, img_size)
+        dl_obj = PathMNIST_truncated
         workers=8
         persist=True
     elif 'chestxray' in datadir:
@@ -517,6 +555,11 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
         dl_obj = AG_NEWS
         workers=8
         persist=True 
+    elif 'mtsamples' in datadir:
+        train_transform, test_transform = _data_transforms_agnews(datadir)
+        dl_obj = MTSamples
+        workers=8
+        persist=True 
     else:
         train_transform, test_transform = _data_transforms_imagenet(datadir)
         # dl_obj = ImageFolder_custom
@@ -526,7 +569,7 @@ def get_dataloader(datadir, train_bs, test_bs, dataidxs=None, img_size=224, samp
     if 'imagenet' in datadir:
         test_ds = dl_obj(datadir, 'val', transform=test_transform)
         train_ds = test_ds
-    elif 'agnews' in datadir:
+    elif 'agnews' in datadir or 'mtsamples' in datadir:
         train_ds = dl_obj(datadir, dataidxs=dataidxs, is_train=True, transform=train_transform)
         test_ds = dl_obj(datadir, is_train=False, transform=test_transform)
 

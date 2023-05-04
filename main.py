@@ -172,8 +172,8 @@ def add_args(parser):
                         help='Drop path rate (default: 0.1)')
     parser.add_argument('--img_size', type=int, default=32,
                         help='Image size (default: 32)')
-    parser.add_argument('--patch_size', type=int, default=8,
-                        help='Patch size (default: 8)')
+    parser.add_argument('--patch_size', type=int, default=4,
+                        help='Patch size (default: 4)')
     parser.add_argument('--warmup_modality', type=str, default='vl',
                         help='warm up modality')
     parser.add_argument('--warmup_rounds', type=int, default=10,
@@ -292,6 +292,8 @@ def datapath2str(path):
         return 'AGNews'
     elif "CropDisease" in path:
         return 'CropDisease'
+    else:
+        return os.path.split(path)[-1]
 
 def get_parameter_number(model):
     total_num = sum(p.numel() for p in model.parameters())
