@@ -451,14 +451,11 @@ if __name__ == "__main__":
             wandb.log({"Params/Total": param_num["Total"], "Params/Trainable":param_num["Trainable"]})
         # Start Federated Training
         #init nodes
-        client_info = Queue(32)
-        # clients = {}
-        for i in range(args.thread_number):
-            client_info.put((client_dict[i], args))
-            # clients[i] = Client(client_dict[i], args)
+
+        clients = [Client(client_dict[i], args) for i in range(args.thread_number)]
 
         # Start server and get initial outputs
-        pool = cm.MyPool(args.thread_number, init_process, (client_info, Client))
+        # pool = cm.MyPool(args.thread_number, init_process, (client_info, Client))
 
         if args.debug:
             time.sleep(10 * (args.client_number * args.client_sample / args.thread_number))
@@ -467,7 +464,9 @@ if __name__ == "__main__":
         for r in range(args.comm_round):
             logging.info('************** Round: {} ***************'.format(r))
             round_start = time.time()
-            client_outputs = pool.map(run_clients, server_outputs)
+            # client_outputs = pool.map(run_clients, server_outputs)
+
+            client_outputs = [client.run(server_outputs[i]) for i, client in enumerate(clients)]
             client_outputs = [c for sublist in client_outputs for c in sublist]
             server_outputs = server.run(client_outputs)
             round_end = time.time()
@@ -478,5 +477,5 @@ if __name__ == "__main__":
             with open('{}/out.log'.format(args.save_path), 'a+') as out_file:
                 out_file.write(out_str)
             # time.sleep(10)
-        pool.close()
-        pool.join()
+        # pool.close()
+        # pool.join()

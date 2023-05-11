@@ -196,6 +196,97 @@ class Block(nn.Module):
                 x = x + self.drop_path(self.gamma_2 * self.mlp_vl(self.norm2_vl(x)))
 
         return x
+    
+class SeparateBlock(nn.Module):
+    def __init__(
+        self,
+        dim,
+        num_heads,
+        mlp_ratio=4.0,
+        qkv_bias=False,
+        qk_scale=None,
+        drop=0.0,
+        attn_drop=0.0,
+        drop_path=0.0,
+        act_layer=nn.GELU,
+        norm_layer=nn.LayerNorm,
+        with_vlffn=False,
+        layer_scale_init_values=0.1,
+        max_text_len=40,
+    ):
+        super().__init__()
+        self.norm1 = norm_layer(dim)
+        self.attn_text = Attention(
+            dim,
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            qk_scale=qk_scale,
+            attn_drop=attn_drop,
+            proj_drop=drop,
+        )
+        self.attn_imag = Attention(
+            dim,
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            qk_scale=qk_scale,
+            attn_drop=attn_drop,
+            proj_drop=drop,
+        )
+        # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+        self.norm2_text = norm_layer(dim)
+        self.norm2_imag = norm_layer(dim)
+        mlp_hidden_dim = int(dim * mlp_ratio)
+        self.mlp_text = Mlp(
+            in_features=dim,
+            hidden_features=mlp_hidden_dim,
+            act_layer=act_layer,
+            drop=drop,
+        )
+        self.mlp_imag = Mlp(
+            in_features=dim,
+            hidden_features=mlp_hidden_dim,
+            act_layer=act_layer,
+            drop=drop,
+        )
+        self.mlp_vl = None
+        if with_vlffn:
+            self.mlp_vl = Mlp(
+                in_features=dim,
+                hidden_features=mlp_hidden_dim,
+                act_layer=act_layer,
+                drop=drop,
+            )
+            self.norm2_vl = norm_layer(dim)
+        
+        self.gamma_1 = \
+            nn.Parameter(layer_scale_init_values * torch.ones((dim)),requires_grad=True) \
+            if layer_scale_init_values is not None else 1.0
+        self.gamma_2 = \
+            nn.Parameter(layer_scale_init_values * torch.ones((dim)),requires_grad=True) \
+            if layer_scale_init_values is not None else 1.0
+
+        self.max_text_len = max_text_len
+
+    def forward(self, x, mask=None, modality_type=None, relative_position_bias=None):
+        
+        if modality_type == "image":
+            x = x + self.drop_path(self.gamma_1 * self.attn_imag(self.norm1(x), mask=mask, relative_position_bias=relative_position_bias))
+            x = x + self.drop_path(self.gamma_2 * self.mlp_imag(self.norm2_imag(x)))
+        elif modality_type == "text":
+            x = x + self.drop_path(self.gamma_1 * self.attn_text(self.norm1(x), mask=mask, relative_position_bias=relative_position_bias))
+            x = x + self.drop_path(self.gamma_2 * self.mlp_text(self.norm2_text(x)))
+        else:
+            if self.mlp_vl is None:
+                x_text = x[:, : self.max_text_len]
+                x_imag = x[:, self.max_text_len :]
+                x_text = x_text + self.drop_path(self.gamma_2 * self.mlp_text(self.norm2_text(x_text)))
+                x_imag = x_imag + self.drop_path(self.gamma_2 * self.mlp_imag(self.norm2_imag(x_imag)))
+                x = torch.cat([x_text, x_imag], dim=1)
+            else:
+                x = x + self.drop_path(self.gamma_2 * self.mlp_vl(self.norm2_vl(x)))
+
+        return x
 
 
 class PatchEmbed(nn.Module):
@@ -261,6 +352,7 @@ class MultiWayTransformer(nn.Module):
         layer_scale_init_values=0.1,
         vlffn_start_layer_index=10,
         max_text_len=40,
+        block_fn=Block,
         config=None,
     ):
         """
@@ -316,7 +408,7 @@ class MultiWayTransformer(nn.Module):
         ]  # stochastic depth decay rule
         self.blocks = nn.ModuleList(
             [
-                Block(
+                block_fn(
                     dim=embed_dim,
                     num_heads=num_heads,
                     mlp_ratio=mlp_ratio,
@@ -655,7 +747,336 @@ class VLMo(nn.Module):
             if 'attn' in k:
                 p.requires_grad = True
 
+class Separate(nn.Module):
+    def __init__(self, img_size, patch_size=8, v_num_classes=100, l_num_classes=4, vocab_size=30522, max_text_len=40, drop_path_rate=0.1, config=None) -> None:
+        super().__init__()
 
+        self.img_size = img_size
+        self.patch_size = patch_size
+        # self.transformer = create_model(
+        #     model_str,
+        #     img_size=self.img_size,
+        #     pretrained=False,
+        #     drop_rate=0,
+        #     drop_path_rate=0,
+        #     attn_drop_rate=0,
+        #     drop_block_rate=None,
+        #     config=config,
+        # )
+
+        self.transformer = MultiWayTransformer(
+            img_size=img_size, patch_size=patch_size, embed_dim=384, depth=7, num_heads=12, 
+            mlp_ratio=4, qkv_bias=True, vlffn_start_layer_index=5, 
+            norm_layer=partial(nn.LayerNorm, eps=1e-6), drop_path_rate=drop_path_rate, config=config, max_text_len=max_text_len, block_fn=SeparateBlock)
+
+        self.patch_size = self.transformer.patch_size
+        self.num_features = self.transformer.num_features
+        self.num_layers = len(self.transformer.blocks)
+        self.build_relative_position_embed()
+
+        self.v_head = nn.Linear(self.num_features, v_num_classes)
+        self.l_head = nn.Linear(self.num_features, l_num_classes)
+
+        self.vlffn_start_layer_index = self.transformer.vlffn_start_layer_index
+
+        bert_config = BertConfig(
+            vocab_size=vocab_size,
+            hidden_size=self.num_features,
+            max_position_embeddings=max_text_len,
+            hidden_dropout_prob=drop_path_rate,
+            position_embedding_type="rel_pos" if self.transformer.need_relative_position_embed else "absolute", 
+        )
+
+        self.text_embeddings = BertEmbeddings(bert_config)
+
+        self.token_type_embeddings = nn.Embedding(2, self.num_features)
+
+    def build_relative_position_embed(self, max_text_len_of_initckpt=196, max_text_len=40):
+        if not self.transformer.need_relative_position_embed:
+            self.relative_position_embed = False
+            self.text_imag_relative_position_index = None
+            self.text_relative_position_index = None
+            self.relative_position_index = None
+            return
+        self.relative_position_embed = True
+        window_size = (int(self.img_size / self.patch_size), int(self.img_size / self.patch_size)) #(14, 14)
+        # rank_zero_info("window_size: {}".format(window_size))
+        num_heads = self.transformer.num_heads
+        # max_text_len_of_initckpt = max_text_len_of_initckpt #196
+        # max_text_len = config["max_text_len"] #40
+        max_imag_len = window_size[0] * window_size[1] + 1 #197
+        self.window_size = window_size
+        self.num_relative_distance = (2 * window_size[0] - 1) * (2 * window_size[1] - 1) + 3
+        self.text_num_relative_distance = 2 * max_text_len_of_initckpt
+        self.all_num_relative_distance = self.num_relative_distance + self.text_num_relative_distance + 2
+
+        self.relative_position_bias_table = nn.Parameter(
+            torch.zeros(self.all_num_relative_distance, num_heads * self.num_layers))
+        
+        # get pair-wise relative position index for each token inside the window
+        coords_h = torch.arange(window_size[0])
+        coords_w = torch.arange(window_size[1])
+        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
+        coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
+        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
+        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
+        relative_coords[:, :, 0] += window_size[0] - 1  # shift to start from 0
+        relative_coords[:, :, 1] += window_size[1] - 1
+        relative_coords[:, :, 0] *= 2 * window_size[1] - 1
+        relative_position_index = \
+            torch.zeros(size=(window_size[0] * window_size[1] + 1, ) * 2, dtype=relative_coords.dtype)
+        relative_position_index[1:, 1:] = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
+        relative_position_index[0, 0:] = self.num_relative_distance - 3
+        relative_position_index[0:, 0] = self.num_relative_distance - 2
+        relative_position_index[0, 0] = self.num_relative_distance - 1
+        self.relative_position_index = relative_position_index
+        
+        text_position_ids = torch.arange(max_text_len-1)
+        text_rel_pos_mat = text_position_ids.unsqueeze(-2) - text_position_ids.unsqueeze(-1)
+        min_distance = int(2-max_text_len_of_initckpt) #-194
+        # rank_zero_info("min_distance: {}".format(min_distance))
+        text_rel_pos_mat = text_rel_pos_mat - min_distance
+        text_rel_pos_mat += (self.num_relative_distance + 2)
+        text_relative_position_index = \
+            torch.zeros(size=(max_text_len, ) * 2, dtype=relative_coords.dtype)
+        text_relative_position_index[1:, 1:] = text_rel_pos_mat
+        text_relative_position_index[0, 0:] = self.all_num_relative_distance - 3
+        text_relative_position_index[0:, 0] = self.all_num_relative_distance - 2
+        text_relative_position_index[0, 0] = self.all_num_relative_distance - 1
+        self.text_relative_position_index = text_relative_position_index
+        
+        text2imag_relative_position_index = torch.ones(max_text_len, max_imag_len) * (self.num_relative_distance)
+        imag2text_relative_position_index = torch.ones(max_imag_len, max_text_len) * (self.num_relative_distance + 1)
+
+        text_row_relative_position_index = torch.cat((text_relative_position_index, text2imag_relative_position_index), 1)
+        imag_row_relative_position_index = torch.cat((imag2text_relative_position_index, relative_position_index), 1)
+        text_imag_relative_position_index = torch.cat((text_row_relative_position_index, imag_row_relative_position_index), 0)
+        self.text_imag_relative_position_index = text_imag_relative_position_index
+
+
+    def get_rel_pos_bias(self, relative_position_index):
+        if self.relative_position_embed:
+            relative_position_bias = F.embedding(relative_position_index.long().to(self.relative_position_bias_table.device),
+                                                    self.relative_position_bias_table)
+            all_relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous() # nH, x, y
+            relative_position_bias_list = torch.chunk(all_relative_position_bias, self.num_layers, dim=0)
+            return relative_position_bias_list
+        else:
+            return [None] * self.num_layers
+        
+    
+    def forward(self, x, modality, masks=None, feat_out=False):
+
+        if modality == 'v':
+            image_embeds, image_masks = self.transformer.visual_embed(x)
+            
+            
+            x = image_embeds
+            all_hidden_states = []
+            relative_position_bias_list = self.get_rel_pos_bias(self.relative_position_index)
+
+            for i, blk in enumerate(self.transformer.blocks):
+                x = blk(x, mask=image_masks, modality_type="image", relative_position_bias=relative_position_bias_list[i])
+                all_hidden_states.append(x)
+            
+            # vlffn_hiddens = all_hidden_states[self.vlffn_start_layer_index-1]
+            # for vlffn_index in range(self.vlffn_start_layer_index, self.num_layers):
+            #     vlffn_hiddens = self.transformer.blocks[vlffn_index](vlffn_hiddens, mask=image_masks, modality_type="vl", relative_position_bias=relative_position_bias_list[vlffn_index])
+            
+            vffn_hiddens = all_hidden_states[-1]
+
+            vffn_hiddens = self.transformer.norm(vffn_hiddens)
+
+            text_feats, image_feats = (
+                None,
+                vffn_hiddens,
+            )
+
+            if feat_out:
+                return image_feats[:, 0]
+
+            cls_feats = self.v_head(image_feats[:, 0])
+            cls_feats = cls_feats / cls_feats.norm(dim=-1, keepdim=True)
+
+            # cls_feats = cls_feats / cls_feats.norm(dim=-1, keepdim=True)
+
+            # vlffn_hiddens = self.transformer.norm(vlffn_hiddens)
+            # cls_vlffn_feats = self.itc_vl_image_proj(vlffn_hiddens[:, 0])
+            # cls_vlffn_feats = cls_vlffn_feats / cls_vlffn_feats.norm(dim=-1, keepdim=True)
+
+            return cls_feats
+        elif modality == 'l':
+
+            text_embeds = self.text_embeddings(x)
+            co_masks = masks
+
+            x = text_embeds
+            all_hidden_states = []
+            relative_position_bias_list = self.get_rel_pos_bias(self.text_relative_position_index)
+
+            
+
+            for i, blk in enumerate(self.transformer.blocks):
+                x = blk(x, mask=co_masks, modality_type="text", relative_position_bias=relative_position_bias_list[i])
+                all_hidden_states.append(x)
+            
+            # vlffn_hiddens = all_hidden_states[self.vlffn_start_layer_index-1]
+            # for vlffn_index in range(self.vlffn_start_layer_index, self.num_layers):
+            #     vlffn_hiddens = self.transformer.blocks[vlffn_index](vlffn_hiddens, mask=co_masks, modality_type="vl", relative_position_bias=relative_position_bias_list[vlffn_index])
+
+            lffn_hiddens = all_hidden_states[-1]
+
+            lffn_hiddens = self.transformer.norm(lffn_hiddens)
+            text_feats, image_feats = (
+                lffn_hiddens,
+                None,
+            )
+
+            if feat_out:
+                return text_feats[:, 0]
+
+            cls_feats = self.l_head(text_feats[:, 0])
+            cls_feats = cls_feats / cls_feats.norm(dim=-1, keepdim=True)
+
+            return cls_feats
+        
+
+    # def forward(self, images, captions, captions_word, caption_lens, txt_masks=None):
+        
+    #     out = {}
+    #     if images is not None:
+    #         image_embeds, image_masks = self.transformer.visual_embed(images)
+            
+            
+    #         x = image_embeds
+    #         all_hidden_states = []
+    #         relative_position_bias_list = self.get_rel_pos_bias(self.relative_position_index)
+
+    #         for i, blk in enumerate(self.transformer.blocks):
+    #             x = blk(x, mask=image_masks, modality_type="image", relative_position_bias=relative_position_bias_list[i])
+    #             all_hidden_states.append(x)
+            
+    #         # vlffn_hiddens = all_hidden_states[self.vlffn_start_layer_index-1]
+    #         # for vlffn_index in range(self.vlffn_start_layer_index, self.num_layers):
+    #         #     vlffn_hiddens = self.transformer.blocks[vlffn_index](vlffn_hiddens, mask=image_masks, modality_type="vl", relative_position_bias=relative_position_bias_list[vlffn_index])
+            
+    #         vffn_hiddens = all_hidden_states[-1]
+
+    #         vffn_hiddens = self.transformer.norm(vffn_hiddens)
+
+    #         text_feats, image_feats = (
+    #             None,
+    #             vffn_hiddens,
+    #         )
+
+    #         cls_feats = self.v_head(image_feats[:, 0])
+    #         cls_feats = cls_feats / cls_feats.norm(dim=-1, keepdim=True)
+
+    #         # cls_feats = cls_feats / cls_feats.norm(dim=-1, keepdim=True)
+
+    #         # vlffn_hiddens = self.transformer.norm(vlffn_hiddens)
+    #         # cls_vlffn_feats = self.itc_vl_image_proj(vlffn_hiddens[:, 0])
+    #         # cls_vlffn_feats = cls_vlffn_feats / cls_vlffn_feats.norm(dim=-1, keepdim=True)
+
+    #         out['image_features'] = cls_feats
+    #     else:
+    #         out['image_features'] = None
+
+    #         # return cls_feats
+
+    #     if captions is not None:
+
+    #         text_embeds = self.text_embeddings(captions)
+    #         co_masks = txt_masks
+
+    #         x = text_embeds
+    #         all_hidden_states = []
+    #         relative_position_bias_list = self.get_rel_pos_bias(self.text_relative_position_index)
+
+            
+
+    #         for i, blk in enumerate(self.transformer.blocks):
+    #             x = blk(x, mask=co_masks, modality_type="text", relative_position_bias=relative_position_bias_list[i])
+    #             all_hidden_states.append(x)
+            
+    #         # vlffn_hiddens = all_hidden_states[self.vlffn_start_layer_index-1]
+    #         # for vlffn_index in range(self.vlffn_start_layer_index, self.num_layers):
+    #         #     vlffn_hiddens = self.transformer.blocks[vlffn_index](vlffn_hiddens, mask=co_masks, modality_type="vl", relative_position_bias=relative_position_bias_list[vlffn_index])
+
+    #         lffn_hiddens = all_hidden_states[-1]
+
+    #         lffn_hiddens = self.transformer.norm(lffn_hiddens)
+    #         text_feats, image_feats = (
+    #             lffn_hiddens,
+    #             None,
+    #         )
+
+    #         cls_feats = self.l_head(text_feats[:, 0])
+    #         cls_feats = cls_feats / cls_feats.norm(dim=-1, keepdim=True)
+
+    #         out['caption_features'] = cls_feats
+    #     else:
+    #         out['caption_features'] = None
+
+    #     return out
+        
+    def state_dict(self, modality='vl'):
+        dicts = {}
+        v_params = ['imag', 'patch_embed', 'pos_embed', 'v_head', 'cls_token']
+        l_params = ['text', 'l_head']
+
+        if modality == 'v':
+            for k, p in self.named_parameters():
+                if all([i not in k for i in l_params]):
+                    dicts.update({k: p})
+        elif modality == 'l':
+            for k, p in self.named_parameters():
+                # if 'imag' not in k and 'patch_embed' not in k and 'v_head' not in k and 'cls_token' not in k:
+                if all([i not in k for i in v_params]):
+                    dicts.update({k: p})
+        elif modality == 'vl':
+            return super().state_dict()
+        else:
+            raise 'Unsupported modality'
+        
+        return dicts
+    
+    def load_state_dict(self, state_dict, strict=False):
+        return super().load_state_dict(state_dict, strict=False)
+
+    def freeze_attn(self):
+        for k, p in self.named_parameters():
+            if 'attn' in k:
+                p.requires_grad = False
+    
+    def unfreeze_attn(self):
+        for k, p in self.named_parameters():
+            if 'attn' in k:
+                p.requires_grad = True
+
+def build_separate(args):
+
+    v_num_class = args.v_class_num or 100
+    l_num_class = args.l_class_num or 4
+
+    # print(v_num_class, l_num_class)
+
+    if 'cifar100' in args.vision_data_dir:
+        v_num_class = 100
+    if 'agnews' in args.language_data_dir:
+        l_num_class = 4
+    # if 'mtsamples' in args.language_data_dir:
+    #     l_num_class = 4
+
+    model = Separate(img_size=args.img_size,
+                 patch_size=args.patch_size,
+                 v_num_classes=v_num_class, 
+                 l_num_classes=l_num_class, 
+                 vocab_size=args.vocab_size, 
+                 max_text_len=args.max_text_len,
+                 drop_path_rate=args.drop_path_rate)
+
+    return model
 
 
 

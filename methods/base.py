@@ -315,11 +315,11 @@ class Base_Server():
     def get_coeff(self, client_info):
 
         v_num = sum([x['num_samples'] for x in client_info if x['modality'] == 'v'])
-        l_num = sum([x['num_samples'] for x in client_info if x['modality'] == 'v'])
+        l_num = sum([x['num_samples'] for x in client_info if x['modality'] == 'l'])
 
-        total_num = 2 * l_num if self.args.balanced else sum([x['num_samples'] for x in client_info])
+        total_num = 2 * l_num if self.args.balanced and v_num != 0 and l_num!=0 else sum([x['num_samples'] for x in client_info])
 
-        num_scale = l_num / v_num if self.args.balanced else 1
+        num_scale = l_num / v_num if self.args.balanced and v_num != 0 and l_num!=0 else 1
         loss_scale = self.get_losses_balanced_scale(client_info) if self.args.loss_balanced else 1
 
         coeffs = []
