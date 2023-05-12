@@ -189,6 +189,8 @@ def add_args(parser):
                 help='balanced between modalities') 
     parser.add_argument('--loss_balanced', action='store_true', default=False,
                 help='balanced between modalities') 
+    parser.add_argument('--momentum', action='store_false', default=True,
+                help='balanced between modalities') 
     
     # CreamFL
     parser.add_argument('--pub_data_dir', type=str, default='dataset/coco/images/val2017/',
@@ -206,6 +208,7 @@ def add_args(parser):
     parser.add_argument('--interintra_weight', type=float, default=0.5,
                         help='inter intra loss weight')
     parser.add_argument('--kd_weight', type=float, default=0.3, help='coefficient of kd')
+    parser.add_argument('--kd_lr', type=float, default=0.01, help='lr of kd')
 
     args = parser.parse_args()
 

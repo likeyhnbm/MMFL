@@ -135,9 +135,13 @@ class Base_Client():
             if len(batch_loss) > 0:
                 epoch_loss.append(sum(batch_loss) / len(batch_loss))
                 # self.writer.add_scalar('Loss/client_{}/train'.format(self.client_index), sum(batch_loss) / len(batch_loss), epoch)
-                logging.info('(client {}. Local Training Epoch: {} \tLoss: {:.6f}  Thread {}  Map {}'.format(self.client_index,
-                                                                            epoch, sum(epoch_loss) / len(epoch_loss), current_process()._identity[0], self.client_map[self.round]))
-        weights = self.model.cpu().state_dict()
+                try:
+                    logging.info('(client {}. Local Training Epoch: {} \tLoss: {:.6f}  Thread {}  Map {}'.format(self.client_index,
+                                                                                epoch, sum(epoch_loss) / len(epoch_loss), current_process()._identity[0], self.client_map[self.round]))
+                except:
+                    logging.info('(client {}. Local Training Epoch: {} \tLoss: {:.6f}  Thread {}  Map {}'.format(self.client_index,
+                                                                            epoch, sum(epoch_loss) / len(epoch_loss), 0, self.client_map[self.round]))
+        weights = self.model.cpu().state_dict(modality='vl' if self.args.momentum else self.modality)
         # images, labels = images.to('cpu'), labels.to('cpu')
         loss = sum(epoch_loss) / len(epoch_loss)
         return weights, loss
@@ -337,13 +341,25 @@ class Base_Server():
 
     def operations(self, client_info):
         client_info.sort(key=lambda tup: tup['client_index'])
-        client_sd = [c['weights'] for c in client_info]
-        
-        cw = self.get_coeff(client_info)
-        # cw = [c['num_samples']/sum([x['num_samples'] for x in client_info]) for c in client_info]
-        ssd = self.model.state_dict()
-        for key in ssd:
-            ssd[key] = sum([sd[key]*cw[i] for i, sd in enumerate(client_sd)])
+
+        if self.args.momentum:
+            client_sd = [c['weights'] for c in client_info]
+
+            cw = self.get_coeff(client_info)
+            # cw = [c['num_samples']/sum([x['num_samples'] for x in client_info]) for c in client_info]
+            ssd = self.model.cpu().state_dict()
+
+            for key in ssd:
+                ssd[key] = sum([sd[key]*cw[i] for i, sd in enumerate(client_sd)])
+
+        else:
+            ssd = self.model.cpu().state_dict()
+            for key in ssd:
+                clients_with_key = [info for info in client_info if key in info['weights'].keys()]
+                if len(clients_with_key) > 0: 
+                    cur_coeff = self.get_coeff(clients_with_key)
+                    client_sd = [c['weights'] for c in clients_with_key]
+                    ssd[key] = sum([sd[key]*cur_coeff[i] for i, sd in enumerate(client_sd)])
         #     value = 0
         #     key_sample = 0
         #     for i, sd in enumerate(client_sd):

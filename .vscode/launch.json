@@ -10,7 +10,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "env": { "PYTHONPATH": "${workspaceFolder}"},
-            "args": ["--method", "creamfl", "--vision_client_number", "2", "--language_client_number", "2" ,"--thread_number", "1" ,
+            "args": ["--method", "ours", "--vision_client_number", "4", "--language_client_number", "4" ,"--thread_number", "2" ,
                     "--client_sample","0.25",
                     // "--vision_data_dir", "dataset/chestmnist",
                     // "--warmup_modality", "v",

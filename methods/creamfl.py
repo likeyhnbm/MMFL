@@ -71,7 +71,7 @@ class Client(Base_Client):
             # self.model.to('cpu')
             with torch.cuda.device(self.device):
                 torch.cuda.empty_cache()
-            client_results.append({'num_samples':num_samples,'acc':acc, 'client_index':self.client_index, 'modality':self.modality, 'loss': loss, 'vecs': deepcopy(vectors)})
+            client_results.append({'weights': deepcopy(weights), 'num_samples':num_samples,'acc':acc, 'client_index':self.client_index, 'modality':self.modality, 'loss': loss, 'vecs': deepcopy(vectors)})
             if self.args.client_sample < 1.0 and self.train_dataloader._iterator is not None:
                 self.train_dataloader._iterator._shutdown_workers()
         # except:
@@ -169,6 +169,7 @@ class Client(Base_Client):
             loss = (loss_moon + loss_inter) * self.args.interintra_weight
 
             loss.backward()
+            nn.utils.clip_grad.clip_grad_norm_(self.model.parameters(), 2)
             self.optimizer.step()
 
         weights = self.model.cpu().state_dict()
@@ -186,8 +187,8 @@ class Client(Base_Client):
             assert False
 
     def extract_pub_feature(self, dataloader):
-        self.model.cuda()
-
+        self.model.to(self.device)
+        self.model.eval()
         feature = []
         distill_index = []
         # iterate batch
@@ -232,6 +233,8 @@ class Server(Base_Server):
     def generate_public_logit(self):
         img_feature, txt_feature = [], []
         distill_index = []
+        self.model.eval()
+        self.model.to(self.device)
         for idx, (images, captions, txt_masks, index) in enumerate(self.public_loader):
             with torch.no_grad():
                 images = images.to(self.device)  # [bs, 3, 224, 224]
@@ -254,6 +257,7 @@ class Server(Base_Server):
         # print(self.global_txt_feature.shape, self.global_img_feature.shape)
         self.distill_index = distill_index
         del img_feature, txt_feature
+        torch.cuda.empty_cache()
 
     def start(self):
         with open('{}/out.log'.format(self.save_path), 'a+') as out_file:
@@ -344,6 +348,9 @@ class Server(Base_Server):
 
             else:
                 t_vec= None
+            
+            self.global_img_feature.cpu().detach()
+            self.global_txt_feature.cpu().detach()
 
             return i_vec, t_vec
 
@@ -385,11 +392,23 @@ class Server(Base_Server):
 
             loss.backward()
 
+            nn.utils.clip_grad.clip_grad_norm_(self.model.parameters(), 2)
+
             self.optimizer.step()
 
     
     def operations(self, client_info):
         client_info.sort(key=lambda tup: tup['client_index'])
+        client_sd = [c['weights'] for c in client_info]
+        cw = self.get_coeff(client_info)
+
+        # cw = [c['num_samples']/sum([x['num_samples'] for x in client_info]) for c in client_info]
+        ssd = self.model.cpu().state_dict()
+
+        for key in ssd:
+            ssd[key] = sum([sd[key]*cw[i] for i, sd in enumerate(client_sd)])
+        
+        self.model.load_state_dict(ssd)
 
         img_vec, img_num = [], []
         txt_vec, txt_num = [], []
@@ -407,6 +426,9 @@ class Server(Base_Server):
                 # print(f'txt_vec {_vec["txt"].shape}')
 
         self.distill(img_vec, txt_vec, img_num, txt_num, self.distill_index)
+
+        del img_vec
+        del txt_vec
         # client_sd = [c['weights'] for c in client_info]
         
         # cw = self.get_coeff(client_info)

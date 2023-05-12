@@ -721,12 +721,12 @@ class VLMo(nn.Module):
         if modality == 'v':
             for k, p in self.named_parameters():
                 if all([i not in k for i in l_params]):
-                    dicts.update({k: p})
+                    dicts.update({k: p.cpu().detach()})
         elif modality == 'l':
             for k, p in self.named_parameters():
                 # if 'imag' not in k and 'patch_embed' not in k and 'v_head' not in k and 'cls_token' not in k:
                 if all([i not in k for i in v_params]):
-                    dicts.update({k: p})
+                    dicts.update({k: p.cpu().detach()})
         elif modality == 'vl':
             return super().state_dict()
         else:
