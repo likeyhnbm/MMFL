@@ -126,51 +126,51 @@ class Client(Base_Client):
                     logging.info('(client {}. Local Training Epoch: {} \tLoss: {:.6f}  Thread {}  Map {}'.format(self.client_index,
                                                                             epoch, sum(epoch_loss) / len(epoch_loss), 0, self.client_map[self.round]))
         
-        distill_dict = {int(b): a for a, b in enumerate(self.distill_index)}
-        for idx, (images, captions, txt_masks, index) in (enumerate(self.public_loader)):
-            self.optimizer.zero_grad()
-            d_idx = operator.itemgetter(*index.tolist())(distill_dict)  # batchidx
-            if self.modality == 'v':
-                images = images.to(self.device)
-                im_feature = self.model(images, 'v', feat_out=True)
-                target_feature = self.global_img_feature[d_idx, :].type_as(im_feature)
+        # distill_dict = {int(b): a for a, b in enumerate(self.distill_index)}
+        # for idx, (images, captions, txt_masks, index) in (enumerate(self.public_loader)):
+        #     self.optimizer.zero_grad()
+        #     d_idx = operator.itemgetter(*index.tolist())(distill_dict)  # batchidx
+        #     if self.modality == 'v':
+        #         images = images.to(self.device)
+        #         im_feature = self.model(images, 'v', feat_out=True)
+        #         target_feature = self.global_img_feature[d_idx, :].type_as(im_feature)
                 
-                with torch.no_grad():
-                    old_im_feature = self.old_model(images, 'v', feat_out=True)
+        #         with torch.no_grad():
+        #             old_im_feature = self.old_model(images, 'v', feat_out=True)
 
-                logits_inter = torch.div(torch.matmul(im_feature, self.global_txt_feature.T), 0.5)
-            elif self.modality == 'l':
-                captions = captions.to(self.device)
-                txt_masks = txt_masks.to(self.device) 
-                im_feature = self.model(captions, 'l', txt_masks, feat_out=True)
-                target_feature = self.global_txt_feature[d_idx, :].type_as(im_feature)
-                # neg
-                with torch.no_grad():
-                    old_im_feature = self.old_model(captions, 'l', txt_masks, feat_out=True)
+        #         logits_inter = torch.div(torch.matmul(im_feature, self.global_txt_feature.T), 0.5)
+        #     elif self.modality == 'l':
+        #         captions = captions.to(self.device)
+        #         txt_masks = txt_masks.to(self.device) 
+        #         im_feature = self.model(captions, 'l', txt_masks, feat_out=True)
+        #         target_feature = self.global_txt_feature[d_idx, :].type_as(im_feature)
+        #         # neg
+        #         with torch.no_grad():
+        #             old_im_feature = self.old_model(captions, 'l', txt_masks, feat_out=True)
 
-                logits_inter = torch.div(torch.matmul(im_feature, self.global_img_feature.T), 0.5)
+        #         logits_inter = torch.div(torch.matmul(im_feature, self.global_img_feature.T), 0.5)
 
-            labels_inter = torch.tensor(d_idx).to(self.device)
-            loss_inter = self.criterion(logits_inter, labels_inter)
+        #     labels_inter = torch.tensor(d_idx).to(self.device)
+        #     loss_inter = self.criterion(logits_inter, labels_inter)
 
-            # pos
-            pos = torch.sum(im_feature * target_feature, dim=-1)
-            pos = pos.reshape(-1, 1)
-            # neg
-            # neg = cos(im_feature, old_im_feature)
-            neg = torch.sum(im_feature * old_im_feature, dim=-1)
-            logits = torch.cat((pos, neg.reshape(-1, 1)), dim=1)
+        #     # pos
+        #     pos = torch.sum(im_feature * target_feature, dim=-1)
+        #     pos = pos.reshape(-1, 1)
+        #     # neg
+        #     # neg = cos(im_feature, old_im_feature)
+        #     neg = torch.sum(im_feature * old_im_feature, dim=-1)
+        #     logits = torch.cat((pos, neg.reshape(-1, 1)), dim=1)
 
-            logits /= 0.5  # temperature
-            labels = torch.zeros(images.size(0)).to(self.device).long()
+        #     logits /= 0.5  # temperature
+        #     labels = torch.zeros(images.size(0)).to(self.device).long()
 
-            loss_moon = self.criterion(logits, labels)
+        #     loss_moon = self.criterion(logits, labels)
 
-            loss = (loss_moon + loss_inter) * self.args.interintra_weight
+        #     loss = (loss_moon + loss_inter) * self.args.interintra_weight
 
-            loss.backward()
-            nn.utils.clip_grad.clip_grad_norm_(self.model.parameters(), 2)
-            self.optimizer.step()
+        #     loss.backward()
+        #     nn.utils.clip_grad.clip_grad_norm_(self.model.parameters(), 2)
+        #     self.optimizer.step()
 
         weights = self.model.cpu().state_dict()
         # images, labels = images.to('cpu'), labels.to('cpu')
