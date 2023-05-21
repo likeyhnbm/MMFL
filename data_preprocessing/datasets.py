@@ -736,7 +736,7 @@ class AG_NEWS(data.Dataset):
 
         self.transform = transform
 
-        if not dataidxs:
+        if dataidxs is None:
             dataidxs = range(len(self.targets))
 
         self.data_idx = dataidxs
