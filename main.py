@@ -14,7 +14,7 @@ import timm
 # from models.adapter import build_adapter_model
 # from models.bias import build_bias_model
 # from models.vpt_official import build_promptmodel as build_official
-from models.vlmo import build_vlmo, build_separate
+from models.vlmo import build_vlmo, build_separate, build_shared
 
 import wandb
 
@@ -407,6 +407,24 @@ if __name__ == "__main__":
             
         client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
                             'client_map':mapping_dict[i], 'model_type': Model} for i in range(args.thread_number)]
+        
+    elif args.method=='shared':
+        Server = ours.Server
+        Client = ours.Client
+        Model = build_shared
+        server_dict = { 'v_train_data':v_train_data_global,
+                        'l_train_data':l_train_data_global,
+                        'v_test_data': v_test_data_global, 
+                        'l_test_data': l_test_data_global, 
+                        'model_type': Model, 
+                        'v_num_classes': v_class_num,
+                        'l_num_classes': l_class_num, 
+                        'v_client_number': args.vision_client_number,
+                        'l_client_number': args.language_client_number,
+                        }
+            
+        client_dict = [{'train_data':train_data_local_dict, 'test_data': test_data_local_dict, 'device': i % torch.cuda.device_count(),
+                            'client_map':mapping_dict[i], 'model_type': Model} for i in range(args.thread_number)]
 
     elif args.method=='creamfl':
         Server = creamfl.Server
@@ -465,7 +483,7 @@ if __name__ == "__main__":
         if args.debug:
             time.sleep(10 * (args.client_number * args.client_sample / args.thread_number))
         else:
-            time.sleep(60 * (args.client_number * args.client_sample / args.thread_number)) #  Allow time for threads to start up
+            time.sleep(120 * (args.client_number * args.client_sample / args.thread_number)) #  Allow time for threads to start up
         for r in range(args.comm_round):
             logging.info('************** Round: {} ***************'.format(r))
             round_start = time.time()
